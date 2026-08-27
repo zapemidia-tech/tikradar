@@ -1,0 +1,1 @@
+import{AppShell,PageTitle}from'@/components/app-shell';import{Alerts}from'@/components/simple-pages';export default function Page(){return <AppShell active="/alerts"><div className="page"><PageTitle eyebrow="MONITORAMENTO" title="Alertas" subtitle="Mudanças importantes detectadas nos itens que você acompanha."/><Alerts/></div></AppShell>}

@@ -1,0 +1,1 @@
+import{AppShell,PageTitle}from'@/components/app-shell';import{Categories}from'@/components/simple-pages';export default function Page(){return <AppShell active="/categories"><div className="page"><PageTitle eyebrow="MAPA DO MERCADO" title="Categorias" subtitle="Compare demanda, aceleração e volume por segmento."/><Categories/></div></AppShell>}

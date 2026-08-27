@@ -1,0 +1,8 @@
+export interface RankedSnapshot{capturedAt:string|Date;ranking:number;sales?:number;creators?:number;videos?:number;gmvEstimated?:number|null}
+const pct=(current:number,previous:number)=>previous===0?0:(current-previous)/Math.abs(previous)*100;
+export function calculateSalesGrowth(items:RankedSnapshot[]){if(items.length<2)return 0;return pct(items.at(-1)?.sales??0,items.at(-2)?.sales??0)}
+export function calculateCreatorGrowth(items:RankedSnapshot[]){if(items.length<2)return 0;return pct(items.at(-1)?.creators??0,items.at(-2)?.creators??0)}
+export function calculateVideoGrowth(items:RankedSnapshot[]){if(items.length<2)return 0;return pct(items.at(-1)?.videos??0,items.at(-2)?.videos??0)}
+export function calculateGmvGrowth(items:RankedSnapshot[]){if(items.length<2)return 0;const a=items.at(-1)?.gmvEstimated,b=items.at(-2)?.gmvEstimated;return a==null||b==null?0:pct(a,b)}
+export function calculateRankingVelocity(items:RankedSnapshot[]){if(items.length<2)return 0;const ordered=[...items].sort((a,b)=>new Date(a.capturedAt).getTime()-new Date(b.capturedAt).getTime());const first=ordered[0],last=ordered.at(-1)!;const days=Math.max(1,(new Date(last.capturedAt).getTime()-new Date(first.capturedAt).getTime())/86400000);return (first.ranking-last.ranking)/days}
+export function calculateMomentum(items:RankedSnapshot[]){if(items.length<3)return calculateRankingVelocity(items);const ordered=[...items].sort((a,b)=>new Date(a.capturedAt).getTime()-new Date(b.capturedAt).getTime());const mid=Math.floor(ordered.length/2);return calculateRankingVelocity(ordered.slice(mid))-calculateRankingVelocity(ordered.slice(0,mid+1))}

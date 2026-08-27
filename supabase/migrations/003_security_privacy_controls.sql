@@ -1,0 +1,9 @@
+alter table public.tiktok_connections add column if not exists platform_user_id text;
+create unique index if not exists tiktok_connections_platform_user_open_idx on public.tiktok_connections(platform_user_id,open_id) where platform_user_id is not null;
+create table if not exists public.privacy_requests(id uuid primary key default gen_random_uuid(),platform_user_id text not null,requester_email text not null,request_type text not null check(request_type in('access','correction','deletion','export','revoke','incident')),details text not null check(char_length(details) between 10 and 2000),status text not null default 'received' check(status in('received','verifying','in_progress','completed','rejected')),created_at timestamptz not null default now(),completed_at timestamptz);
+create index if not exists privacy_requests_user_created_idx on public.privacy_requests(platform_user_id,created_at desc);
+alter table public.privacy_requests enable row level security;revoke all on public.privacy_requests from anon,authenticated;
+create table if not exists public.security_audit_events(id bigint generated always as identity primary key,platform_user_id text,event_type text not null,metadata jsonb not null default '{}',created_at timestamptz not null default now());
+create index if not exists security_audit_events_created_idx on public.security_audit_events(created_at desc);create index if not exists security_audit_events_user_idx on public.security_audit_events(platform_user_id,created_at desc);
+alter table public.security_audit_events enable row level security;revoke all on public.security_audit_events from anon,authenticated;
+comment on table public.privacy_requests is 'Authenticated privacy and security requests; service-role access only.';comment on table public.security_audit_events is 'Minimal security audit trail without tokens, secrets or raw personal payloads.';

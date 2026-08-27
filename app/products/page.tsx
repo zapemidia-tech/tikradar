@@ -1,0 +1,2 @@
+import{AppShell,PageTitle}from'@/components/app-shell';import{ProductsTable}from'@/components/products-table';import{getTikTokDataProvider}from'@/lib/providers/provider-factory';
+export default async function Products(){const products=await getTikTokDataProvider().getProducts();return <AppShell active="/products"><div className="page"><PageTitle eyebrow="CATÁLOGO" title="Produtos" subtitle="Encontre produtos vencedores com dados de crescimento, concorrência e demanda."/><ProductsTable products={products}/></div></AppShell>}

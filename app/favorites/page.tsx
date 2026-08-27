@@ -1,0 +1,1 @@
+import{AppShell,PageTitle}from'@/components/app-shell';import{Favorites}from'@/components/simple-pages';export default function Page(){return <AppShell active="/favorites"><div className="page"><PageTitle eyebrow="SUA COLEÇÃO" title="Favoritos" subtitle="Produtos, criadores e lojas salvos para acompanhar."/><Favorites/></div></AppShell>}

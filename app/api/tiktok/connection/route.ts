@@ -1,0 +1,2 @@
+import{NextResponse}from'next/server';import{getChatGPTUser}from'@/app/chatgpt-auth';import{SupabaseTikTokTokenStore}from'@/lib/tiktok/token-store';
+export async function DELETE(){const user=await getChatGPTUser();if(!user)return NextResponse.json({error:'Autenticação necessária.'},{status:401});try{const deleted=await new SupabaseTikTokTokenStore().deleteForUser(user.userId);return NextResponse.json({status:'deleted',deleted})}catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Falha ao excluir conexão.'},{status:503})}}

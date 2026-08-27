@@ -1,0 +1,5 @@
+export type SaturationLevel='Muito baixa'|'Baixa'|'Média'|'Alta'|'Muito alta';
+export interface Product{id:string;name:string;shop:string;category:string;price:number;originalPrice?:number;sales24h:number;sales7d:number;gmv:number;growth24h:number;growth7d:number;growth30d:number;creators:number;newCreators:number;videos:number;newVideos:number;views:number;commission:number;rating:number;reviews:number;opportunityScore:number;saturation:SaturationLevel;status:string;rankingVelocity:number;momentum:number;trend:string;rankingHistory:{date:string;ranking:number}[];history:{date:string;sales:number;gmv:number;creators:number;videos:number}[]}
+export interface Creator{id:string;name:string;username:string;followers:number;sales:number;gmv:number;products:number;videos:number;views:number;engagement:number;growth:number}
+export interface Shop{id:string;name:string;category:string;activeProducts:number;sales:number;gmv:number;growth:number;rating:number;creators:number}
+export interface Video{id:string;creator:string;product:string;views:number;likes:number;comments:number;shares:number;sales:number;gmv:number;date:string;growth:number;url?:string}

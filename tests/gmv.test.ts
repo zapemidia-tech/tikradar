@@ -1,0 +1,2 @@
+import{describe,it,expect}from'vitest';import{normalizeGmvRange}from'@/services/tiktok/adapters';
+describe('GMV dessensibilizado',()=>{it('preserva faixa e marca como não exato',()=>expect(normalizeGmvRange({min:100,max:200,currency:'LOCAL'})).toEqual({gmvMin:100,gmvMax:200,gmvEstimated:150,gmvDisplay:'100 – 200',currency:'LOCAL',isExact:false}));it('não inventa faixa ausente',()=>expect(normalizeGmvRange({min:null,max:null,currency:'USD'}).gmvEstimated).toBeNull())})
