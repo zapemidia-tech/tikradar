@@ -4,7 +4,7 @@ MVP de inteligência de mercado para TikTok Shop. O produto identifica itens em 
 
 ## Stack e arquitetura
 
-Next.js App Router (runtime Vinext/Sites), React, TypeScript, Tailwind CSS, Lucide, Recharts, Zod, React Hook Form e Supabase/PostgreSQL. As telas consomem `ProductDataProvider`; nenhum componente conhece a origem dos dados. Nesta versão, `MockTikTokProvider` fornece 100 produtos, 30 lojas, 100 criadores e 300 vídeos realistas.
+Next.js App Router (padrão, compatível com Vercel), React, TypeScript, Tailwind CSS, Lucide, Recharts, Zod, React Hook Form e Supabase (Auth + PostgreSQL). As telas consomem `ProductDataProvider`; nenhum componente conhece a origem dos dados. Nesta versão, `MockTikTokProvider` fornece 100 produtos, 30 lojas, 100 criadores e 300 vídeos realistas.
 
 ## Rodando localmente
 
@@ -23,6 +23,10 @@ Abra `http://localhost:3000`. Sem variáveis do Supabase, a aplicação segue fu
 3. Configure os Redirect URLs da autenticação para o domínio local e o domínio final.
 
 A migration cria entidades de catálogo, snapshots históricos, relacionamentos e dados privados. RLS restringe `users`, `favorites`, `alerts` e `watchlists` ao proprietário autenticado.
+
+## Autenticação
+
+A autenticação usa Supabase Auth (`@supabase/ssr`) via cookies HTTP-only, com sessão renovada pelo `middleware.ts` a cada requisição. `/login` autentica com email/senha; `/onboarding` cria a conta (`supabase.auth.signUp`) antes de coletar preferências. Rotas administrativas e a API `/api/tiktok/*` exigem sessão válida — veja `lib/auth/session.ts`.
 
 ## Scores
 
@@ -70,21 +74,19 @@ As páginas `/privacy`, `/security` e `/data-requests` documentam o tratamento d
 
 Antes de habilitar dados reais, execute todas as migrations, configure os segredos apenas no ambiente server-side e valide a região física dos provedores. A revogação local usa `DELETE /api/tiktok/connection` e deve ser acompanhada da revogação no TikTok Shop.
 
-## Continuar no Claude Code
+## Deploy na Vercel
 
 Requisito recomendado: Node.js `22.13.0` ou superior e npm compatível.
 
+1. Importe o repositório na Vercel — o framework Next.js é detectado automaticamente (`next build`/`next start`).
+2. Em Project Settings → Environment Variables, cadastre todas as chaves de `.env.example` (Supabase, TikTok Shop) para os ambientes Production/Preview/Development.
+3. Em Supabase, adicione a URL de produção da Vercel aos Redirect URLs de autenticação.
+4. Faça o deploy. O `middleware.ts` renova a sessão Supabase em cada requisição; nenhum segredo (`SUPABASE_SECRET_KEY`, `TIKTOK_SHOP_APP_SECRET`, `TIKTOK_TOKEN_ENCRYPTION_KEY`, `TIKTOK_ADMIN_SYNC_SECRET`) é exposto ao cliente.
+
+Para validar alterações antes de subir:
+
 ```bash
-unzip tikradar-source.zip -d tikradar
-cd tikradar
 npm install
-cp .env.example .env.local
-npm run dev
-```
-
-Abra a pasta `tikradar` no terminal em que o Claude Code estiver instalado e execute `claude`. Para validar alterações:
-
-```bash
 npm run test
 npm run typecheck
 npm run lint
