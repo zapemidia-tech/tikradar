@@ -35,8 +35,15 @@ export default function Onboarding() {
   async function continueFromStep1() {
     setAccountError(null);
     setAccountLoading(true);
-    const supabase = getSupabaseBrowserClient();
-    const { error } = await supabase.auth.signUp({ email, password });
+    let error;
+    try {
+      const supabase = getSupabaseBrowserClient();
+      ({ error } = await supabase.auth.signUp({ email, password }));
+    } catch {
+      setAccountLoading(false);
+      setAccountError('Cadastro ainda não está disponível: configure as credenciais do Supabase.');
+      return;
+    }
     setAccountLoading(false);
 
     if (error) {

@@ -26,8 +26,15 @@ export default function Login() {
     const email = String(formData.get('email') ?? '');
     const password = String(formData.get('password') ?? '');
 
-    const supabase = getSupabaseBrowserClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    let signInError;
+    try {
+      const supabase = getSupabaseBrowserClient();
+      ({ error: signInError } = await supabase.auth.signInWithPassword({ email, password }));
+    } catch {
+      setLoading(false);
+      setError('Login ainda não está disponível: configure as credenciais do Supabase.');
+      return;
+    }
     setLoading(false);
 
     if (signInError) {

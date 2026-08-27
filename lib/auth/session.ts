@@ -11,7 +11,12 @@ export type SessionUser = {
 const SIGN_IN_PATH = '/login';
 
 export async function getSessionUser(): Promise<SessionUser | null> {
-  const supabase = await getSupabaseServerClient();
+  let supabase;
+  try {
+    supabase = await getSupabaseServerClient();
+  } catch {
+    return null;
+  }
   const {
     data: { user },
   } = await supabase.auth.getUser();
