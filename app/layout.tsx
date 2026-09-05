@@ -6,6 +6,8 @@ import './techno.css';
 import './integration.css';
 import './ranking.css';
 import './legal.css';
+import './landing.css';
+import './auth.css';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',

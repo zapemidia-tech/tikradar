@@ -1,20 +1,22 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Eye, Sparkles } from 'lucide-react';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Eye, EyeOff, Sparkles } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
+import { sanitizeNext } from '@/lib/auth/safe-next';
+import { setRememberSession } from '@/lib/auth/remember';
 
-function safeReturnTo(): string {
-  if (typeof window === 'undefined') return '/';
-  const value = new URLSearchParams(window.location.search).get('return_to');
-  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
-  return value;
-}
+const GENERIC_ERROR = 'Não foi possível entrar. Verifique o e-mail e a senha e tente novamente.';
+const UNAVAILABLE = 'Login indisponível no momento. Tente novamente em instantes.';
 
-export default function Login() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = sanitizeNext(searchParams.get('next'));
+
   const [show, setShow] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,30 +24,108 @@ export default function Login() {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
     const formData = new FormData(e.currentTarget);
-    const email = String(formData.get('email') ?? '');
+    const email = String(formData.get('email') ?? '').trim();
     const password = String(formData.get('password') ?? '');
 
-    let signInError;
+    let signInError: unknown = null;
     try {
       const supabase = getSupabaseBrowserClient();
-      ({ error: signInError } = await supabase.auth.signInWithPassword({ email, password }));
+      const result = await supabase.auth.signInWithPassword({ email, password });
+      signInError = result.error;
     } catch {
       setLoading(false);
-      setError('Login ainda não está disponível: configure as credenciais do Supabase.');
+      setError(UNAVAILABLE);
       return;
     }
-    setLoading(false);
 
     if (signInError) {
-      setError('Email ou senha inválidos.');
+      setLoading(false);
+      setError(GENERIC_ERROR);
       return;
     }
 
-    router.push(safeReturnTo());
+    setRememberSession(remember);
+    router.replace(next);
     router.refresh();
   }
 
+  return (
+    <section className="auth-form">
+      <form onSubmit={onSubmit} noValidate>
+        <p className="eyebrow green">BEM-VINDO DE VOLTA</p>
+        <h2>Entre na sua conta</h2>
+        <span>Acesse seu radar e continue de onde parou.</span>
+
+        <label>
+          E-mail
+          <input
+            type="email"
+            name="email"
+            autoComplete="email"
+            placeholder="voce@empresa.com"
+            required
+          />
+        </label>
+
+        <label>
+          Senha
+          <div>
+            <input
+              type={show ? 'text' : 'password'}
+              name="password"
+              autoComplete="current-password"
+              placeholder="••••••••"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShow((v) => !v)}
+              aria-label={show ? 'Ocultar senha' : 'Mostrar senha'}
+            >
+              {show ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+        </label>
+
+        <div className="auth-row">
+          <label className="auth-remember">
+            <input
+              type="checkbox"
+              name="remember"
+              checked={remember}
+              onChange={(e) => setRemember(e.target.checked)}
+            />
+            Lembrar sessão
+          </label>
+          <a className="auth-link-inline" href="/forgot-password">
+            Esqueci minha senha
+          </a>
+        </div>
+
+        {error && (
+          <p className="auth-message is-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" disabled={loading}>
+          {loading ? (
+            <>
+              <span className="auth-spinner" aria-hidden="true" />
+              Entrando…
+            </>
+          ) : (
+            'Entrar'
+          )}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+export default function Login() {
   return (
     <main className="auth-page">
       <section className="auth-brand">
@@ -57,39 +137,14 @@ export default function Login() {
         </a>
         <div>
           <p>INTELIGÊNCIA PARA TIKTOK SHOP</p>
-          <h1>Descubra os próximos produtos vencedores.</h1>
-          <span>Transforme dados em decisões melhores — antes que todo mundo perceba a tendência.</span>
+          <h1>Enxergue as tendências antes do mercado.</h1>
+          <span>Transforme sinais de crescimento em decisões melhores.</span>
         </div>
-        <small>Dados demonstrativos nesta versão MVP.</small>
+        <small>Acesso restrito. Novos acessos são liberados por convite.</small>
       </section>
-      <section className="auth-form">
-        <form onSubmit={onSubmit}>
-          <p className="eyebrow green">BEM-VINDO DE VOLTA</p>
-          <h2>Entre na sua conta</h2>
-          <span>Acesse seu radar e continue de onde parou.</span>
-          <label>
-            Email
-            <input type="email" name="email" placeholder="voce@empresa.com" required />
-          </label>
-          <label>
-            Senha
-            <div>
-              <input type={show ? 'text' : 'password'} name="password" placeholder="••••••••" required />
-              <button type="button" onClick={() => setShow(!show)}>
-                <Eye size={16} />
-              </button>
-            </div>
-          </label>
-          <a href="#">Esqueceu sua senha?</a>
-          {error && <p role="alert">{error}</p>}
-          <button type="submit" disabled={loading}>
-            {loading ? 'Entrando…' : 'Entrar no TikRadar'}
-          </button>
-          <p>
-            Ainda não tem conta? <a href="/onboarding">Começar agora</a>
-          </p>
-        </form>
-      </section>
+      <Suspense fallback={<section className="auth-form" />}>
+        <LoginForm />
+      </Suspense>
     </main>
   );
 }

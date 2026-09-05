@@ -1,0 +1,70 @@
+/* Ajustes das telas de autenticação (login, esqueci senha, redefinir senha).
+   A estrutura base .auth-page / .auth-form vem de extra.css + techno.css. */
+
+.auth-form form > .auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px 0 4px;
+}
+.auth-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0;
+}
+.auth-remember input {
+  width: 15px;
+  height: 15px;
+  accent-color: #21b6d2;
+}
+.auth-form form > a.auth-link-inline {
+  display: inline;
+  text-align: left;
+  margin: 0;
+}
+
+.auth-message {
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 16px 0 0;
+}
+.auth-message.is-error {
+  background: rgba(216, 95, 74, 0.12);
+  border: 1px solid rgba(216, 95, 74, 0.4);
+  color: #f0b8ac;
+}
+.auth-message.is-success {
+  background: rgba(53, 242, 191, 0.1);
+  border: 1px solid rgba(53, 242, 191, 0.35);
+  color: #8ff7d9;
+}
+
+.auth-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: auth-spin 0.6s linear infinite;
+  vertical-align: -2px;
+  margin-right: 7px;
+}
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+
+.auth-form form > button[disabled] { opacity: 0.65; cursor: progress; }
+
+.auth-back {
+  display: inline-block;
+  margin-top: 22px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.auth-back:hover { color: var(--green); }

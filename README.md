@@ -4,93 +4,174 @@ MVP de inteligência de mercado para TikTok Shop. O produto identifica itens em 
 
 ## Stack e arquitetura
 
-Next.js App Router (padrão, compatível com Vercel), React, TypeScript, Tailwind CSS, Lucide, Recharts, Zod, React Hook Form e Supabase (Auth + PostgreSQL). As telas consomem `ProductDataProvider`; nenhum componente conhece a origem dos dados. Nesta versão, `MockTikTokProvider` fornece 100 produtos, 30 lojas, 100 criadores e 300 vídeos realistas.
+Next.js App Router (16.x, Turbopack), React 19, TypeScript, Tailwind CSS, Lucide, Recharts, Zod, React Hook Form e Supabase (Auth + PostgreSQL). As telas consomem `ProductDataProvider`; nenhum componente conhece a origem dos dados. Nesta versão, `MockTikTokProvider` fornece dados demonstrativos.
 
-## Rodando localmente
+O "middleware" do Next 16 fica em **`proxy.ts`** (na raiz). Ele renova a sessão do Supabase a cada requisição e aplica a proteção de rotas.
+
+## Rotas
+
+| Rota | Acesso |
+| --- | --- |
+| `/` | Pública — landing page |
+| `/login` | Pública — entra com e-mail/senha (sem cadastro público) |
+| `/forgot-password` | Pública — solicita link de recuperação |
+| `/reset-password` | Pública — define nova senha (via link do e-mail) |
+| `/auth/callback` | Pública — troca o código do link por sessão |
+| `/privacy`, `/security`, `/data-requests` | Públicas |
+| `/dashboard` | Protegida — exige sessão |
+| `/products`, `/products/[id]`, `/radar`, `/creators`, `/shops`, `/videos`, `/categories`, `/favorites`, `/alerts`, `/settings` | Protegidas — exigem sessão |
+| `/admin` e `/admin/**` | Protegidas — exigem sessão **e** `role = 'admin'` (verificado no servidor) |
+| `/onboarding` | Redireciona para `/login` (cadastro público desabilitado) |
+
+Visitante em rota protegida → redirecionado para `/login?next=<rota>` (o `next` é validado contra open redirect: só caminhos internos). Usuário autenticado em `/login` ou `/forgot-password` → redirecionado para `/dashboard`. Após login, o usuário vai para o `next` solicitado ou para `/dashboard`; administradores acessam `/admin` pelo menu lateral.
+
+## 1. Variáveis de ambiente
+
+Somente **nomes** — os valores ficam apenas em `.env.local` (local) e nas Environment Variables da Vercel. Nunca versione valores.
+
+Cliente (expostas ao navegador, prefixo `NEXT_PUBLIC_`):
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (ou legado `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+- `NEXT_PUBLIC_APP_URL` — URL pública da aplicação (usada em metadados)
+
+Servidor (nunca enviadas ao navegador):
+
+- `SUPABASE_SECRET_KEY` (ou legado `SUPABASE_SERVICE_ROLE_KEY`) — service role; usada só em rotas de API e scripts locais
+- `TIKTOK_DATA_PROVIDER`, `TIKTOK_SHOP_APP_KEY`, `TIKTOK_SHOP_APP_SECRET`, `TIKTOK_SHOP_SERVICE_ID`, `TIKTOK_SHOP_REDIRECT_URI`, `TIKTOK_SHOP_REGION`, `TIKTOK_SHOP_CURRENCY`, `TIKTOK_SHOP_ACCESS_TOKEN`, `TIKTOK_SHOP_REFRESH_TOKEN`, `TIKTOK_SHOP_CIPHER`, `TIKTOK_TOKEN_ENCRYPTION_KEY`, `TIKTOK_ADMIN_SYNC_SECRET`
+
+```bash
+npm install
+cp .env.example .env.local   # preencha apenas localmente
+npm run dev
+```
+
+Sem variáveis do Supabase, a aplicação continua funcional com dados demonstrativos e **sem** autenticação real (as rotas protegidas ficam acessíveis apenas em desenvolvimento; em produção elas são bloqueadas por padrão).
+
+## 2. Configuração das URLs de autenticação no Supabase
+
+No painel do Supabase → **Authentication → URL Configuration**:
+
+- **Site URL:** a URL pública da aplicação (ex.: `http://localhost:3000` em dev; o domínio da Vercel em produção).
+- **Redirect URLs (allow list):** adicione, para cada ambiente:
+  - `http://localhost:3000/auth/callback`
+  - `https://SEU-DOMINIO-VERCEL/auth/callback`
+
+Em **Authentication → Providers → Email**: mantenha "Confirm email" conforme sua política; **desative "Enable sign-ups"** se quiser impedir qualquer autocadastro no nível do Supabase (a aplicação já não oferece tela de cadastro).
+
+## 3. Callback de recuperação de senha
+
+Fluxo:
+
+1. `/forgot-password` chama `supabase.auth.resetPasswordForEmail(email, { redirectTo: <origin>/auth/callback?next=/reset-password })`.
+2. O e-mail leva a `/auth/callback`, que troca o `code` (PKCE) — ou `token_hash`/`type` — por uma sessão em cookies HTTP e redireciona para `/reset-password`.
+3. `/reset-password` valida a sessão, aceita a nova senha (`supabase.auth.updateUser`), faz `signOut` e manda para `/login`.
+4. Link inválido/expirado → `/reset-password?error=expired`, com opção de pedir novo link.
+
+No template de e-mail "Reset Password" do Supabase, o link padrão (`{{ .ConfirmationURL }}`) já respeita o `redirectTo` — não é preciso editar, desde que a Redirect URL esteja na allow list.
+
+## 4. Aplicando as migrations
+
+Arquivos em `supabase/migrations/`, aplicados **em ordem** pelo Supabase CLI ou pelo SQL Editor:
+
+- `001_initial_schema.sql` — catálogo, métricas, favoritos/alertas/watchlists (com RLS)
+- `002_tiktok_bestsellers_snapshots.sql` — snapshots históricos e conexões TikTok
+- `003_security_privacy_controls.sql` — solicitações de privacidade e auditoria mínima
+- `004_profiles_and_roles.sql` — tabela `profiles` (`id`, `email`, `role`, `created_at`, `updated_at`), RLS, trigger de criação de perfil (`role = 'user'`) e trigger que impede o cliente de alterar `role`. **Idempotente.**
+
+```bash
+supabase db push          # via CLI
+# ou: cole cada arquivo no SQL Editor, em ordem
+```
+
+## 5. Criação segura do primeiro administrador
+
+Administrador autorizado: `adrielgodoymarketingdigital@gmail.com`. **Nenhuma senha é definida em código ou migration.**
+
+### Opção 1 (recomendada) — convite pelo Supabase Dashboard + SQL
+
+1. Supabase → **Authentication → Users → "Add user"** (ou **"Invite user"**) e informe o e-mail acima.
+   - "Invite user" envia um e-mail de convite; "Add user" cria o usuário e você pode marcar para enviar o link de definição de senha.
+2. O usuário define a própria senha pelo link do convite **ou** pelo fluxo `/forgot-password` da aplicação.
+3. Aplique a promoção de papel rodando `supabase/admin/promote-admin.sql` no **SQL Editor** (roda com service role). Ele faz:
+   ```sql
+   update public.profiles p
+   set role = 'admin', updated_at = now()
+   from auth.users u
+   where u.id = p.id and lower(u.email) = lower('adrielgodoymarketingdigital@gmail.com');
+   ```
+4. Confirme: o `select` no fim do script deve retornar 1 linha com `role = 'admin'`.
+
+Para revogar: rode o `update` comentado no fim do mesmo arquivo (`role = 'user'`).
+
+### Opção 2 — script local de bootstrap (`scripts/bootstrap-admin.mjs`)
+
+Use apenas se não puder usar o Dashboard.
+
+```bash
+node scripts/bootstrap-admin.mjs
+```
+
+- Pede a senha interativamente, **sem exibi-la**; não grava senha em arquivo, log ou histórico.
+- Lê `NEXT_PUBLIC_SUPABASE_URL` e `SUPABASE_SECRET_KEY` de `.env.local`; usa a service role só neste processo local.
+- **Aborta** se detectar `CI`, `VERCEL`, `NODE_ENV=production` ou ausência de terminal interativo — nunca roda em build/deploy.
+- Idempotente: se o usuário existe, apenas atualiza a senha e garante `role = 'admin'`.
+- Não está ligado a nenhum script de `package.json`.
+
+Nunca: criar usuário no build; colocar senha em migration ou em `.env.example`; enviar senha ao navegador; versionar credenciais.
+
+## 6. Execução local
 
 ```bash
 npm install
 cp .env.example .env.local
-npm run dev
+npm run dev        # http://localhost:3000
 ```
 
-Abra `http://localhost:3000`. Sem variáveis do Supabase, a aplicação segue funcional com dados mockados.
-
-## Supabase
-
-1. Crie um projeto Supabase e copie URL e chaves para `.env.local`.
-2. Execute, em ordem, os arquivos de `supabase/migrations/` pelo CLI ou SQL Editor.
-3. Configure os Redirect URLs da autenticação para o domínio local e o domínio final.
-
-A migration cria entidades de catálogo, snapshots históricos, relacionamentos e dados privados. RLS restringe `users`, `favorites`, `alerts` e `watchlists` ao proprietário autenticado.
-
-## Autenticação
-
-A autenticação usa Supabase Auth (`@supabase/ssr`) via cookies HTTP-only, com sessão renovada pelo `middleware.ts` a cada requisição. `/login` autentica com email/senha; `/onboarding` cria a conta (`supabase.auth.signUp`) antes de coletar preferências. Rotas administrativas e a API `/api/tiktok/*` exigem sessão válida — veja `lib/auth/session.ts`.
-
-## Scores
-
-O Opportunity Score fica em `lib/scoring/opportunity-score.ts`: aceleração (30%), crescimento de GMV (20%), novos criadores (15%), novos vídeos (10%), comissão (10%), concorrência (10%) e atratividade do ticket (5%). Todos os sinais são normalizados de 0 a 100.
-
-O Saturation Score fica em `lib/scoring/saturation-score.ts` e combina criadores, vídeos, vendedores, eficiência de vendas por criador e entrada recente de novos criadores. `lib/scoring/acceleration.ts` compara as últimas 24h, blocos de 3 dias e blocos de 7 dias para produzir crescimento, aceleração e momentum.
-
-## Troca do provider
-
-Defina `TIKTOK_DATA_PROVIDER=mock` para dados demonstrativos ou `TIKTOK_DATA_PROVIDER=tiktok` para a infraestrutura oficial. A seleção acontece em `lib/providers/provider-factory.ts`; componentes React não conhecem a origem dos dados. O modo TikTok só deve ser ativado depois de configurar credenciais reais, migrations, autorização de Seller, shop cipher e o adapter validado com uma resposta oficial.
-
-## Estrutura
-
-- `app/`: rotas, login e onboarding
-- `components/`: shell, tabelas, Radar, gráficos e detalhes
-- `lib/providers/`: abstração e mock provider
-- `lib/scoring/`: Opportunity Score, saturação e aceleração
-- `types/`: contratos tipados
-- `supabase/migrations/`: schema PostgreSQL, índices e RLS
-
-## Qualidade
+## 7. Testes e verificação
 
 ```bash
-npm run lint
-npm run typecheck
-npm run test
-npm run build
+npm run test        # vitest (unit)
+npm run typecheck   # tsc --noEmit
+npm run lint        # eslint
+npm run build       # next build
 ```
 
-Sem credenciais reais, os dados exibidos continuam demonstrativos. Nenhum endpoint não oficial é utilizado.
+Cobertura relevante em `tests/`:
 
-## TikTok Shop Open API
+- `safe-next.test.ts` — validação do parâmetro `next` (open redirect).
+- `route-access.test.ts` — `/` e `/login` públicas; `/privacy`, `/security`, `/data-requests` públicas; `/dashboard` redireciona visitante para `/login`; `/admin` bloqueia usuário comum e libera admin; usuário logado sai de `/login`.
+- `profiles-migration.test.ts` — a migration `004` habilita RLS, restringe `role` a `user|admin`, impede troca de `role` pelo cliente, cria o perfil no cadastro e não contém senha.
+- `client-secrets.test.ts` — nenhum módulo `'use client'` referencia variáveis privadas; o client do Supabase só usa a chave publicável/anon; se houver build, o bundle em `.next/static` não contém nomes de variáveis privadas.
 
-Selecione a fonte com `TIKTOK_DATA_PROVIDER=mock` ou `TIKTOK_DATA_PROVIDER=tiktok`. O modo TikTok exige App Key, App Secret, access token de Seller, shop cipher e Supabase server-side. Em desenvolvimento, configuração incompleta faz fallback explícito para o mock; em produção, a aplicação falha de forma segura.
+## 8. Desabilitar o bootstrap
 
-O OAuth de Seller começa em `/api/tiktok/oauth/authorize` e retorna por `/api/tiktok/oauth/callback`. Tokens nunca chegam ao navegador: são criptografados com AES-GCM usando `TIKTOK_TOKEN_ENCRYPTION_KEY` e gravados por service role. A sincronização manual usa `POST /api/admin/tiktok/sync` com o header `x-admin-sync-token`.
-
-Os endpoints oficiais preparados são `/analytics/202511/{products|creators|videos|lives}/bestselling`, com `1D`, `7D` ou `30D` e `LOCAL` ou `USD`. O adapter permanece estrito até a primeira resposta oficial ser capturada no API Testing Tool do Partner Center; isso impede que campos sejam inventados. GMV concorrente é modelado somente como faixa e estimativa derivada.
-
-Passos no Partner Center: criar/abrir o app, habilitar o escopo `data.bestselling.public.read`, cadastrar a Redirect URL, autorizar um Development Shop/Seller, obter o shop cipher pela API de lojas autorizadas e validar a primeira resposta Bestsellers no API Testing Tool.
-
-## Segurança e privacidade
-
-As páginas `/privacy`, `/security` e `/data-requests` documentam o tratamento de dados, os controles de segurança e o canal autenticado de solicitações. Os procedimentos internos versionados ficam em `docs/security/`. OAuth exige usuário autenticado e `state` de curta duração; tokens são criptografados com AES-256-GCM. A migration `003_security_privacy_controls.sql` adiciona solicitações de privacidade, auditoria mínima e o identificador da identidade da plataforma.
-
-Antes de habilitar dados reais, execute todas as migrations, configure os segredos apenas no ambiente server-side e valide a região física dos provedores. A revogação local usa `DELETE /api/tiktok/connection` e deve ser acompanhada da revogação no TikTok Shop.
-
-## Deploy na Vercel
-
-Requisito recomendado: Node.js `22.13.0` ou superior e npm compatível.
-
-1. Importe o repositório na Vercel — o framework Next.js é detectado automaticamente (`next build`/`next start`).
-2. Em Project Settings → Environment Variables, cadastre todas as chaves de `.env.example` (Supabase, TikTok Shop) para os ambientes Production/Preview/Development.
-3. Em Supabase, adicione a URL de produção da Vercel aos Redirect URLs de autenticação.
-4. Faça o deploy. O `middleware.ts` renova a sessão Supabase em cada requisição; nenhum segredo (`SUPABASE_SECRET_KEY`, `TIKTOK_SHOP_APP_SECRET`, `TIKTOK_TOKEN_ENCRYPTION_KEY`, `TIKTOK_ADMIN_SYNC_SECRET`) é exposto ao cliente.
-
-Para validar alterações antes de subir:
+Depois de criar o administrador:
 
 ```bash
-npm install
-npm run test
-npm run typecheck
-npm run lint
-npm run build
+git rm scripts/bootstrap-admin.mjs
 ```
 
-Nunca preencha ou compartilhe `.env.example`. Copie-o para `.env.local`, preencha apenas localmente e mantenha esse arquivo fora do controle de versão.
+Ou, para manter o arquivo desabilitado, deixe a primeira linha executável como `process.exit(1)` com um comentário. O script já não roda em CI/Vercel/produção e não é referenciado por `package.json`, então também é seguro simplesmente removê-lo.
+
+## 9. Configuração na Vercel (sem revelar valores)
+
+1. Importe o repositório — o framework Next.js é detectado (`next build` / `next start`).
+2. **Project Settings → Environment Variables:** cadastre, por **nome**, todas as variáveis da seção 1 para os ambientes Production/Preview/Development. Não cole valores neste repositório nem em PRs.
+3. **Supabase → Authentication → URL Configuration:** adicione `https://SEU-DOMINIO-VERCEL/auth/callback` às Redirect URLs e ajuste a Site URL.
+4. Deploy. O `proxy.ts` renova a sessão a cada requisição; nenhum segredo (`SUPABASE_SECRET_KEY`, `TIKTOK_SHOP_APP_SECRET`, `TIKTOK_TOKEN_ENCRYPTION_KEY`, `TIKTOK_ADMIN_SYNC_SECRET`) é exposto ao cliente.
+
+## Autenticação (resumo técnico)
+
+- `@supabase/ssr` via cookies HTTP. Clientes: `lib/supabase/client.ts` (browser), `lib/supabase/server.ts` (server), `proxy.ts` (renovação).
+- Sessão validada **no servidor** (`supabase.auth.getUser()` no `proxy.ts` e `requireSessionUser` / `requireAdmin` nas páginas). Não confiamos em `localStorage`.
+- Papel lido de `public.profiles` sob RLS (cada um lê apenas o próprio perfil). O frontend nunca envia papel; a coluna `role` só é elevada a `admin` por operação server-side com service role (Opção 1/2 acima).
+- Logout real: `POST /api/auth/logout` (`supabase.auth.signOut()`) + `signOut()` no cliente.
+- "Lembrar sessão" (checkbox no login): quando desmarcado, a sessão é encerrada ao abrir o app numa nova sessão de navegador (o `@supabase/ssr` não expõe cookie de sessão puro nesta versão).
+- Mensagens de erro de autenticação são genéricas e em português.
+
+## Scores, providers, segurança e TikTok Shop Open API
+
+Sem alterações nesta entrega. Ver `lib/scoring/`, `lib/providers/provider-factory.ts`, `docs/security/` e as páginas `/privacy`, `/security`, `/data-requests`. O modo `TIKTOK_DATA_PROVIDER=tiktok` continua exigindo credenciais reais, migrations aplicadas, autorização de Seller e adapter validado; em desenvolvimento há fallback explícito para o mock, em produção a aplicação falha de forma segura.
+
+Nunca preencha ou compartilhe `.env.example`. Copie-o para `.env.local`, preencha apenas localmente e mantenha fora do controle de versão.

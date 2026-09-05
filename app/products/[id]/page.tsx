@@ -1,2 +1,3 @@
-import{AppShell}from'@/components/app-shell';import{ProductDetail}from'@/components/product-detail';import{getTikTokDataProvider}from'@/lib/providers/provider-factory';import{notFound}from'next/navigation';
-export default async function ProductPage({params}:{params:Promise<{id:string}>}){const{id}=await params;const product=await getTikTokDataProvider().getProduct(id);if(!product)notFound();return <AppShell active="/products"><div className="page"><ProductDetail product={product}/></div></AppShell>}
+import{AppShell}from'@/components/app-shell';import{ProductDetail}from'@/components/product-detail';import{getTikTokDataProvider}from'@/lib/providers/provider-factory';import{notFound}from'next/navigation';import{requireSessionUser}from'@/lib/auth/session';
+export const dynamic='force-dynamic';
+export default async function ProductPage({params}:{params:Promise<{id:string}>}){await requireSessionUser('/products');const{id}=await params;const product=await getTikTokDataProvider().getProduct(id);if(!product)notFound();return <AppShell active="/products"><div className="page"><ProductDetail product={product}/></div></AppShell>}
