@@ -39,27 +39,30 @@ for (const key of forbiddenEnv) {
 if (process.env.NODE_ENV === 'production') abort('NODE_ENV=production. Execute apenas em ambiente local de desenvolvimento.');
 if (!process.stdin.isTTY) abort('Sem terminal interativo (TTY). A senha precisa ser digitada manualmente.');
 
-// 2. Carrega apenas as duas variáveis necessárias de .env.local (sem imprimir valores).
-function loadEnvLocal() {
-  const out = {};
+// 2. Carrega as variáveis necessárias dos arquivos .env locais (sem imprimir
+//    valores). Precedência: .env.local > .env  (process.env ainda vence, abaixo).
+function loadEnvFile(name, out) {
   try {
-    const raw = readFileSync(resolve(process.cwd(), '.env.local'), 'utf8');
-    for (const line of raw.split('\n')) {
-      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    const raw = readFileSync(resolve(process.cwd(), name), 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
       if (!m) continue;
-      let value = m[2].trim();
+      if (m[1] in out) continue; // não sobrescreve o arquivo de maior precedência
+      let value = m[2];
       if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
         value = value.slice(1, -1);
       }
       out[m[1]] = value;
     }
   } catch {
-    /* .env.local pode não existir; caímos no process.env abaixo */
+    /* arquivo pode não existir */
   }
   return out;
 }
 
-const fileEnv = loadEnvLocal();
+const fileEnv = {};
+loadEnvFile('.env.local', fileEnv);
+loadEnvFile('.env', fileEnv);
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || fileEnv.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY =
   process.env.SUPABASE_SECRET_KEY ||
