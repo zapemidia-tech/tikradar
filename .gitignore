@@ -29,6 +29,9 @@ yarn-error.log*
 # local environment
 .env*
 
+# supabase CLI local cache
+/supabase/.temp/
+
 # deployment and generated files
 .vercel
 next-env.d.ts

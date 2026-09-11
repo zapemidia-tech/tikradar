@@ -1,17 +1,17 @@
 'use client';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { shortDate } from '@/lib/format';
 
-const data = [
-  { d: '18 ago', gmv: 1.2 },
-  { d: '19 ago', gmv: 1.55 },
-  { d: '20 ago', gmv: 1.43 },
-  { d: '21 ago', gmv: 1.86 },
-  { d: '22 ago', gmv: 2.04 },
-  { d: '23 ago', gmv: 2.42 },
-  { d: '24 ago', gmv: 2.78 },
-];
+export function GmvChart({ data }: { data: { date: string; gmv: number }[] }) {
+  if (data.length < 2) {
+    return (
+      <div className="chart-empty">
+        <p>Histórico insuficiente para um gráfico de tendência.</p>
+        <small>Volta a aparecer depois de mais sincronizações em dias diferentes.</small>
+      </div>
+    );
+  }
 
-export function GmvChart() {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={data}>
@@ -22,9 +22,12 @@ export function GmvChart() {
           </linearGradient>
         </defs>
         <CartesianGrid stroke="#edf0ee" vertical={false} />
-        <XAxis dataKey="d" axisLine={false} tickLine={false} />
-        <YAxis axisLine={false} tickLine={false} tickFormatter={(v) => `R$ ${v}m`} />
-        <Tooltip formatter={(v) => [`R$ ${v} mi`, 'GMV']} />
+        <XAxis dataKey="date" tickFormatter={shortDate} axisLine={false} tickLine={false} />
+        <YAxis axisLine={false} tickLine={false} tickFormatter={(v: number) => `R$ ${(v / 1000).toFixed(0)}k`} />
+        <Tooltip
+          labelFormatter={(label) => shortDate(String(label))}
+          formatter={(value) => [`R$ ${Number(value).toLocaleString('pt-BR')}`, 'GMV']}
+        />
         <Area type="monotone" dataKey="gmv" stroke="#167b58" strokeWidth={2.5} fill="url(#fill)" />
       </AreaChart>
     </ResponsiveContainer>

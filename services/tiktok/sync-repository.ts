@@ -25,11 +25,41 @@ export class SupabaseSyncRepository implements SyncRepository{
     const snapshotTable=kind==='products'?'product_snapshots':kind==='creators'?'creator_snapshots':kind==='videos'?'video_snapshots':'live_snapshots';
     const foreignKey=kind==='products'?'product_id':kind==='creators'?'creator_id':kind==='videos'?'video_id':'live_id';
 
+    // Para vídeos, resolve creator_id/product_id a partir dos external ids já
+    // conhecidos (criadores/produtos que já fazem parte do catálogo). Só
+    // lookup — nunca cria um criador/produto "vazio" só para linkar um vídeo.
+    let creatorIdByExternalId=new Map<string,string>();
+    let productIdByExternalId=new Map<string,string>();
+    if(kind==='videos'){
+      const creatorExternalIds=[...new Set(items.map((i)=>i.creatorExternalId).filter((v):v is string=>Boolean(v)))];
+      const productExternalIds=[...new Set(items.map((i)=>i.productExternalId).filter((v):v is string=>Boolean(v)))];
+      const[creatorsLookup,productsLookup]=await Promise.all([
+        creatorExternalIds.length?this.client.from('creators').select('id,external_id').in('external_id',creatorExternalIds):Promise.resolve({data:[],error:null}),
+        productExternalIds.length?this.client.from('products').select('id,external_id').in('external_id',productExternalIds):Promise.resolve({data:[],error:null}),
+      ]);
+      if(creatorsLookup.error)throw creatorsLookup.error;
+      if(productsLookup.error)throw productsLookup.error;
+      creatorIdByExternalId=new Map((creatorsLookup.data??[]).map((r)=>[r.external_id as string,r.id as string]));
+      productIdByExternalId=new Map((productsLookup.data??[]).map((r)=>[r.external_id as string,r.id as string]));
+    }
+
     // 1) upsert das entidades em lote (dedupe por external_id: o Postgres
     //    rejeita um upsert que tente afetar a mesma linha duas vezes no
     //    mesmo comando).
     const entityByExternalId=new Map<string,Record<string,unknown>>();
-    for(const item of items){const entity:Record<string,unknown>={external_id:item.externalId};if(kind!=='videos')entity.name=item.name??`${kind} ${item.externalId}`;entityByExternalId.set(item.externalId,entity)}
+    for(const item of items){
+      const entity:Record<string,unknown>={external_id:item.externalId};
+      if(kind!=='videos')entity.name=item.name??`${kind} ${item.externalId}`;
+      if(kind==='creators'){
+        if(item.username)entity.username=item.username;
+        if(item.followersCount!==undefined)entity.followers=item.followersCount;
+      }
+      if(kind==='videos'){
+        if(item.creatorExternalId&&creatorIdByExternalId.has(item.creatorExternalId))entity.creator_id=creatorIdByExternalId.get(item.creatorExternalId);
+        if(item.productExternalId&&productIdByExternalId.has(item.productExternalId))entity.product_id=productIdByExternalId.get(item.productExternalId);
+      }
+      entityByExternalId.set(item.externalId,entity);
+    }
 
     const idByExternalId=new Map<string,string>();
     await Promise.all(chunk([...entityByExternalId.values()],BATCH_SIZE).map(async(batch)=>{
