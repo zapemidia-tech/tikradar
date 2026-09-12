@@ -2,8 +2,9 @@
 import { useState } from 'react';
 import type { Product } from '@/types';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { brl, compact, INSUFFICIENT, NA, num, pct, rating, shortDate, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_NOT_IN_API, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
+import { brl, compact, INSUFFICIENT, NA, num, pct, rating, shortDate, text, TOOLTIP_ESTIMATED_SALES, TOOLTIP_NEEDS_HISTORY, TOOLTIP_NOT_IN_API, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
 import { Heart, Share2, Store, Star, Users, Video } from 'lucide-react';
+import { ProductThumb } from './product-thumb';
 
 function growthLabel(value: number | null): string {
   if (value === null) return INSUFFICIENT;
@@ -44,14 +45,12 @@ export function ProductDetail({ product }: { product: Product }) {
   return (
     <>
       <div className="product-hero">
-        <div className="large-image">
-          {product.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- URL externa da CDN da TikTok, domínio variável
-            <img src={product.imageUrl} alt="" />
-          ) : (
-            product.name.slice(0, 2).toUpperCase()
-          )}
-        </div>
+        <ProductThumb
+          className="large-image"
+          imageUrl={product.imageUrl}
+          productUrl={product.productUrl}
+          fallback={product.name.slice(0, 2).toUpperCase()}
+        />
         <div className="product-info">
           <div className="breadcrumbs">Produtos / {text(product.category)}</div>
           <span className="status">{product.status === null ? 'DADOS INSUFICIENTES' : text(product.status).toUpperCase()}</span>
@@ -124,9 +123,10 @@ export function ProductDetail({ product }: { product: Product }) {
             ['Criadores', num(product.creators)],
             ['Vídeos', num(product.videos)],
             ['Avaliações', product.reviews === null ? NA : String(product.reviews)],
+            ['Vendas estimadas', compact(product.estimatedSales), TOOLTIP_ESTIMATED_SALES],
           ] as const
-        ).map(([a, b], i) => (
-          <article key={a}>
+        ).map(([a, b, title], i) => (
+          <article key={a} title={title}>
             <span>{i === 2 ? <Users /> : i === 3 ? <Video /> : <Store />}</span>
             <p>{a}</p>
             <strong>{b}</strong>

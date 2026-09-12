@@ -69,6 +69,24 @@ function imageUrlFrom(value: unknown): string | undefined {
   return stringValue(urls[0], thumbUrls[0]);
 }
 
+// URL real do produto na TikTok Shop (para a miniatura virar um link de
+// verdade em vez de imagem estática). Verificado em 2026-09-12 em todos os
+// registros então sincronizados de product_snapshots (produtos), video/
+// creator/live_snapshots — nenhum retorna um campo de link: o payload real
+// de produtos só traz `id, name, rank, rating, shop_id, shop_name,
+// gmv_range, product_image` (urls da IMAGEM, não da página do produto).
+// Por isso este adapter nunca preenche `productUrl` hoje. NUNCA construir
+// essa URL a partir de `product_id`/`id` (ex.: um padrão como
+// `https://shop.tiktok.com/view/product/{id}`) — não é um campo confirmado
+// pela resposta real nem por documentação oficial, e um link assim pode
+// apontar para a página errada ou não existir. Se uma sincronização futura
+// capturar um campo real de link (inspecione no API Testing Tool antes de
+// assumir o nome — candidatos plausíveis: `product_url`, `deep_link`,
+// `share_url`, `landing_page_url`), mapeie-o aqui.
+function productUrlFrom(): string | undefined {
+  return undefined;
+}
+
 /** unix seconds -> ISO 8601, ou undefined se ausente/ inválido. */
 function isoFromUnixSeconds(value: unknown): string | undefined {
   const seconds = numberValue(value);
@@ -128,6 +146,7 @@ export class TikTokBestsellersAdapter implements BestsellersAdapter {
         shopExternalId: stringValue(item.shop_id),
         shopName: stringValue(item.shop_name),
         imageUrl: imageUrlFrom(item.product_image),
+        productUrl: productUrlFrom(),
         likes,
         comments,
         shares,

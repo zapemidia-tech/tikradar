@@ -79,6 +79,7 @@ Arquivos em `supabase/migrations/`, aplicados **em ordem** pelo Supabase CLI ou 
 - `003_security_privacy_controls.sql` — solicitações de privacidade e auditoria mínima
 - `004_profiles_and_roles.sql` — tabela `profiles` (`id`, `email`, `role`, `created_at`, `updated_at`), RLS, trigger de criação de perfil (`role = 'user'`) e trigger que impede o cliente de alterar `role`. **Idempotente.**
 - `005_video_engagement_and_product_media.sql` — colunas de `video_snapshots` (`likes`, `comments`, `shares`, `duration_seconds`, `publish_time`, `engagement_rate`) e `products.image_url`, campos que a resposta real da TikTok Shop já retorna. **Necessária antes de deployar este código** — sem ela, `/produtos` e `/vídeos` falham ao consultar essas colunas. **Idempotente.**
+- `006_product_url.sql` — coluna `products.product_url`, para a miniatura do produto virar um link real para a página na TikTok Shop. Fica sempre `NULL`: nenhuma resposta real inspecionada até agora (2.161 `product_snapshots` + amostras de vídeos/criadores/lives, em 2026-09-12) traz um campo de link — só `product_image` (imagem, não página). A coluna existe pronta para quando a API passar a retornar isso (ver `productUrlFrom` em `services/tiktok/adapters.ts`). **Idempotente.**
 
 ```bash
 supabase db push          # via CLI
@@ -183,6 +184,10 @@ Cada indicador só aparece quando existe um campo real correspondente na respost
 O **Opportunity Score** (`lib/scoring/real-opportunity-score.ts`) é uma média ponderada só dos fatores realmente disponíveis — nenhum fator ausente vira zero, o peso dele é redistribuído entre os presentes. Pesos, referências de normalização e o mínimo de fatores exigido ficam centralizados e documentados nesse arquivo. Resultado salvo (append-only) em `opportunity_scores` a cada sincronização bem-sucedida de produtos.
 
 **Comissão** e **vendas/unidades atribuídas** não têm fonte em nenhum endpoint usado por este projeto (`/analytics/202511/{products|creators|videos|lives}/bestselling`) — confirmado inspecionando `raw_payload` real. Preencher esses campos exigiria um endpoint adicional da TikTok Shop (comissão do produto/afiliado e atribuição de vendas por conteúdo/pedido), com escopo próprio além de `data.bestselling.public.read`, que este projeto não implementa e não deve simular.
+
+**Miniaturas clicáveis e "Vendas estimadas":** a miniatura do produto (em `/products`, `/radar`, `/products/[id]` e `/videos`) só vira um link (`target="_blank"`) quando existe uma URL real de produto (`Product.productUrl`/`Video.productUrl`) — nunca construída a partir do `product_id`. Hoje nenhum produto sincronizado tem essa URL: confirmado em 2026-09-12 inspecionando `raw_payload` de **todos** os `product_snapshots` já sincronizados (2.161 registros) e amostras de vídeos/criadores/lives — a resposta real só traz `id, name, rank, rating, shop_id, shop_name, gmv_range, product_image` (e variações por tipo de entidade); nenhum campo de link de produto existe. Ver `services/tiktok/adapters.ts` (função `productUrlFrom`) para onde mapear se a API passar a retornar isso.
+
+"**Vendas estimadas**" (GMV ÷ preço, no mesmo snapshot) é uma estimativa, nunca um dado oficial — fórmula e limitações documentadas em `lib/scoring/estimated-sales.ts`. Hoje aparece como "Não informado" para todos os produtos: a mesma inspeção confirmou que **nenhum** `product_snapshot` sincronizado tem `price` (nem `sold_count`) preenchido — a resposta real de produtos não traz preço para esta conta.
 
 Ver também `lib/providers/provider-factory.ts`, `docs/security/` e as páginas `/privacy`, `/security`, `/data-requests`.
 

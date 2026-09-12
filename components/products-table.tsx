@@ -2,8 +2,9 @@
 import { useMemo, useState } from 'react';
 import type { Product } from '@/types';
 import { Heart, Search, SlidersHorizontal } from 'lucide-react';
-import { brl, compact, growthPct, num, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_PERIOD_NOT_SYNCED, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
+import { brl, compact, growthPct, num, text, TOOLTIP_ESTIMATED_SALES, TOOLTIP_NEEDS_HISTORY, TOOLTIP_PERIOD_NOT_SYNCED, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
 import { EmptyState } from './state-message';
+import { ProductThumb } from './product-thumb';
 
 const PAGE_SIZE = 20;
 
@@ -70,6 +71,7 @@ export function ProductsTable({ products }: { products: Product[] }) {
                     <th>PREÇO</th>
                     <th title={TOOLTIP_PERIOD_NOT_SYNCED}>VENDAS 24H</th>
                     <th>GMV 7D</th>
+                    <th title={TOOLTIP_ESTIMATED_SALES}>VENDAS ESTIMADAS</th>
                     <th>CRESCIMENTO (7D)</th>
                     <th>CRIADORES</th>
                     <th>SATURAÇÃO</th>
@@ -81,14 +83,12 @@ export function ProductsTable({ products }: { products: Product[] }) {
                   {visible.map((p, i) => (
                     <tr key={p.id}>
                       <td>
-                        <span className={'product-img p' + (i % 3)}>
-                          {p.imageUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element -- URL externa da CDN da TikTok, domínio variável
-                            <img src={p.imageUrl} alt="" />
-                          ) : (
-                            p.name.slice(0, 2).toUpperCase()
-                          )}
-                        </span>
+                        <ProductThumb
+                          className={'product-img p' + (i % 3)}
+                          imageUrl={p.imageUrl}
+                          productUrl={p.productUrl}
+                          fallback={p.name.slice(0, 2).toUpperCase()}
+                        />
                         <div>
                           <a href={`/products/${p.id}`}>
                             <strong>{p.name}</strong>
@@ -104,6 +104,10 @@ export function ProductsTable({ products }: { products: Product[] }) {
                       </td>
                       <td>{compact(p.sales24h)}</td>
                       <td>{brl(p.gmv)}</td>
+                      <td title={TOOLTIP_ESTIMATED_SALES}>
+                        <strong>{compact(p.estimatedSales)}</strong>
+                        {p.estimatedSales !== null && <small className="estimate-tag">estimativa</small>}
+                      </td>
                       <td title={p.growth7d === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
                         {p.growth7d === null ? (
                           <span>{growthPct(p.growth7d)}</span>

@@ -7,6 +7,7 @@ import { calculateRankingVelocity, calculateMomentum, type RankedSnapshot } from
 import { calculateRealOpportunityScore } from '@/lib/scoring/real-opportunity-score';
 import { classifySaturation } from '@/lib/scoring/saturation-score';
 import { classifyOpportunity } from '@/lib/scoring/opportunity-score';
+import { calculateEstimatedSales } from '@/lib/scoring/estimated-sales';
 
 // Provider que lê os dados REAIS sincronizados da TikTok Shop no Supabase
 // (products/creators/videos/lives + *_snapshots). Não chama a API da TikTok
@@ -81,7 +82,7 @@ export class TikTokShopProvider implements ProductDataProvider {
   // --- Produtos -------------------------------------------------------
   async getProducts(): Promise<Product[]> {
     const [{ data: products, error: productsError }, { data: snapshots, error: snapshotsError }, { data: shops, error: shopsError }] = await Promise.all([
-      this.client.from('products').select('id,name,shop_id,image_url'),
+      this.client.from('products').select('id,name,shop_id,image_url,product_url'),
       this.client
         .from('product_snapshots')
         .select('product_id,captured_at,ranking,sold_count,gmv_estimated,price,creator_count,video_count,review_count,rating')
@@ -115,12 +116,28 @@ export class TikTokShopProvider implements ProductDataProvider {
       const group = grouped.get(p.id as string);
       if (!group) continue; // produto sem snapshot ainda: nada real a mostrar
       const shopName = p.shop_id ? (shopNameById.get(p.shop_id as string) ?? null) : null;
-      result.push(this.mapProduct(p.id as string, p.name as string, shopName, (p.image_url as string | null) ?? undefined, group));
+      result.push(
+        this.mapProduct(
+          p.id as string,
+          p.name as string,
+          shopName,
+          (p.image_url as string | null) ?? undefined,
+          (p.product_url as string | null) ?? undefined,
+          group,
+        ),
+      );
     }
     return result;
   }
 
-  private mapProduct(id: string, name: string, shopName: string | null, imageUrl: string | undefined, group: EntitySnapshotGroup<ProductSnapshotRow>): Product {
+  private mapProduct(
+    id: string,
+    name: string,
+    shopName: string | null,
+    imageUrl: string | undefined,
+    productUrl: string | undefined,
+    group: EntitySnapshotGroup<ProductSnapshotRow>,
+  ): Product {
     const { latest, previous, series } = group;
     const growth7d = growthBetween(latest.soldCount, previous?.soldCount ?? null);
     const gmvGrowth7d = growthBetween(latest.gmvEstimated, previous?.gmvEstimated ?? null);
@@ -152,11 +169,17 @@ export class TikTokShopProvider implements ProductDataProvider {
       // Bestsellers de produtos não retorna categoria).
       category: null,
       imageUrl,
+      productUrl,
       price: latest.price,
       originalPrice: undefined,
       sales24h: null, // não sincronizamos o período '1D'
       sales7d: latest.soldCount,
       gmv: latest.gmvEstimated,
+      // Estimativa (GMV ÷ preço no mesmo snapshot) — ver
+      // lib/scoring/estimated-sales.ts para a fórmula e limitações. Hoje
+      // fica sempre `null` porque a API não retorna preço para nenhum
+      // produto sincronizado; ativa sozinha quando price passar a existir.
+      estimatedSales: calculateEstimatedSales(latest.gmvEstimated, latest.price),
       growth24h: null,
       growth7d,
       growth30d: null, // não sincronizamos o período '30D'
@@ -267,7 +290,7 @@ export class TikTokShopProvider implements ProductDataProvider {
         .order('captured_at', { ascending: false })
         .limit(SNAPSHOT_ROW_LIMIT),
       this.client.from('creators').select('id,name'),
-      this.client.from('products').select('id,name'),
+      this.client.from('products').select('id,name,image_url,product_url'),
     ]);
     if (videosError) throw videosError;
     if (snapshotsError) throw snapshotsError;
@@ -276,6 +299,12 @@ export class TikTokShopProvider implements ProductDataProvider {
 
     const creatorNameById = new Map((creators ?? []).map((c) => [c.id as string, c.name as string]));
     const productNameById = new Map((products ?? []).map((p) => [p.id as string, p.name as string]));
+    // Miniatura/link do produto vinculado ao vídeo: reaproveita o que já foi
+    // sincronizado em `products` (image_url real; product_url continua
+    // sempre ausente hoje — ver services/tiktok/adapters.ts). Só existe
+    // quando o vídeo já está associado a um produto do catálogo.
+    const productImageById = new Map((products ?? []).map((p) => [p.id as string, (p.image_url as string | null) ?? undefined]));
+    const productUrlById = new Map((products ?? []).map((p) => [p.id as string, (p.product_url as string | null) ?? undefined]));
 
     const rows: (VideoSnapshotRow & { videoId: string })[] = (snapshots ?? []).map((s) => ({
       videoId: s.video_id as string,
@@ -302,6 +331,8 @@ export class TikTokShopProvider implements ProductDataProvider {
         id: v.id as string,
         creator: v.creator_id ? (creatorNameById.get(v.creator_id as string) ?? null) : null,
         product: v.product_id ? (productNameById.get(v.product_id as string) ?? null) : null,
+        imageUrl: v.product_id ? productImageById.get(v.product_id as string) : undefined,
+        productUrl: v.product_id ? productUrlById.get(v.product_id as string) : undefined,
         views: latest.views,
         likes: latest.likes,
         comments: latest.comments,

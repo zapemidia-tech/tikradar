@@ -18,11 +18,22 @@ export interface Product {
   shop: string | null;
   category: string | null;
   imageUrl?: string;
+  // URL real da página do produto na TikTok Shop (para a miniatura virar um
+  // link de verdade). Só existe quando um campo genuíno de link vier da API
+  // — nenhuma resposta real inspeciona até agora traz isso (ver
+  // services/tiktok/adapters.ts). NUNCA construir esta URL a partir de `id`;
+  // sem URL real, a miniatura fica estática (sem link inventado).
+  productUrl?: string;
   price: number | null;
   originalPrice?: number;
   sales24h: number | null;
   sales7d: number | null;
   gmv: number | null;
+  // Estimativa (NUNCA um dado oficial): GMV ÷ preço, no mesmo snapshot. Ver
+  // fórmula e limitações completas em lib/scoring/estimated-sales.ts.
+  // `null` quando falta preço ou GMV reais nesse snapshot — a UI mostra
+  // "Não informado", nunca inventa um número.
+  estimatedSales: number | null;
   growth24h: number | null;
   growth7d: number | null;
   growth30d: number | null;
@@ -76,6 +87,12 @@ export interface Video {
   id: string;
   creator: string | null;
   product: string | null;
+  // Miniatura e link do produto associado ao vídeo (vêm de `products`,
+  // via `product_id`, quando o produto já faz parte do catálogo
+  // sincronizado). `productUrl` só existe quando a API retornar um campo
+  // real de link — ver comentário em `Product.productUrl`.
+  imageUrl?: string;
+  productUrl?: string;
   views: number | null;
   likes: number | null;
   comments: number | null;

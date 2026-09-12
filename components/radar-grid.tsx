@@ -2,8 +2,9 @@
 import { useState } from 'react';
 import type { Product } from '@/types';
 import { ArrowUpRight, Heart, Sparkles, Users, Video } from 'lucide-react';
-import { brl, compact, growthPct, num, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
+import { brl, compact, growthPct, num, text, TOOLTIP_ESTIMATED_SALES, TOOLTIP_NEEDS_HISTORY, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
 import { EmptyState } from './state-message';
+import { ProductThumb } from './product-thumb';
 
 // "Alta comissão" saiu: nenhuma API autorizada configurada neste projeto
 // retorna comissão (ver README), então esse filtro nunca teria resultado
@@ -41,14 +42,12 @@ export function RadarGrid({ products }: { products: Product[] }) {
           {visible.map((p, i) => (
             <article className="opportunity-card" key={p.id}>
               <div className="opp-top">
-                <span className={'opp-image c' + (i % 4)}>
-                  {p.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- URL externa da CDN da TikTok, domínio variável
-                    <img src={p.imageUrl} alt="" />
-                  ) : (
-                    p.name.slice(0, 2).toUpperCase()
-                  )}
-                </span>
+                <ProductThumb
+                  className={'opp-image c' + (i % 4)}
+                  imageUrl={p.imageUrl}
+                  productUrl={p.productUrl}
+                  fallback={p.name.slice(0, 2).toUpperCase()}
+                />
                 <div>
                   <span className="status">
                     <Sparkles size={11} />
@@ -90,6 +89,10 @@ export function RadarGrid({ products }: { products: Product[] }) {
                       {p.growth7d >= 0 ? '↗' : '↘'} {p.growth7d}%
                     </strong>
                   )}
+                </div>
+                <div title={TOOLTIP_ESTIMATED_SALES}>
+                  <small>VENDAS ESTIMADAS</small>
+                  <strong>{compact(p.estimatedSales)}</strong>
                 </div>
               </div>
               <div className="ranking-mini">

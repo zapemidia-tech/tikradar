@@ -2,6 +2,7 @@
 import type { Creator, Shop, Video } from '@/types';
 import { brl, compact, growthPct, num, relativeDate, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_NOT_IN_API } from '@/lib/format';
 import { EmptyState } from './state-message';
+import { ProductThumb } from './product-thumb';
 
 export function CreatorsTable({ items }: { items: Creator[] }) {
   if (items.length === 0) {
@@ -141,7 +142,7 @@ export function VideosTable({ items }: { items: Video[] }) {
               return (
                 <tr key={x.id}>
                   <td>
-                    <span className={'video-thumb v' + (i % 4)}>▶</span>
+                    <ProductThumb className={'video-thumb v' + (i % 4)} imageUrl={x.imageUrl} productUrl={x.productUrl} fallback="▶" />
                     <div>
                       <strong>{text(x.product)}</strong>
                       <small>

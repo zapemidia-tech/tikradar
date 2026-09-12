@@ -42,6 +42,10 @@ export const TOOLTIP_NOT_IN_API = 'A resposta oficial da TikTok Shop não traz e
 export const TOOLTIP_NEEDS_HISTORY = 'Calculado a partir de pelo menos 2 sincronizações deste item.';
 export const TOOLTIP_PERIOD_NOT_SYNCED = 'Este projeto sincroniza apenas o período de 7 dias; o período de 24h ainda não é coletado.';
 export const TOOLTIP_SCORE_INSUFFICIENT = 'Faltam sinais reais suficientes (crescimento, ranking, criadores, vídeos, rating...) para calcular um Opportunity Score.';
+/** "Vendas estimadas" nunca é um dado oficial — ver lib/scoring/estimated-sales.ts para a fórmula completa. */
+export const TOOLTIP_ESTIMATED_SALES =
+  'Estimativa, não um dado oficial da TikTok Shop: GMV ÷ preço, no mesmo período. Pode ser impreciso — o preço pode ter mudado dentro da janela do GMV, e o próprio GMV já é o ponto médio de uma faixa estimada pela TikTok. Requer preço real do produto, que a API ainda não retorna para esta conta.';
+export const TOOLTIP_OPEN_PRODUCT = 'Abrir produto na TikTok Shop (nova aba)';
 
 /** Percentual de crescimento: null sempre significa histórico insuficiente, nunca "campo ausente da API". */
 export const growthPct = (n: number | null | undefined) => (n === null || n === undefined ? INSUFFICIENT : `${n >= 0 ? '+' : ''}${n}%`);

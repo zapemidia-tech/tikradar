@@ -77,6 +77,7 @@ export class SupabaseSyncRepository implements SyncRepository{
       if(kind==='products'){
         if(item.shopExternalId&&shopIdByExternalId.has(item.shopExternalId))entity.shop_id=shopIdByExternalId.get(item.shopExternalId);
         if(item.imageUrl)entity.image_url=item.imageUrl;
+        if(item.productUrl)entity.product_url=item.productUrl;
       }
       if(kind==='creators'){
         if(item.username)entity.username=item.username;
