@@ -37,13 +37,13 @@ export function groupSnapshotsByEntity<T extends { capturedAt: string }>(
 }
 
 /**
- * Variação percentual entre dois valores reais (1 casa decimal).
- * `null` quando qualquer um dos lados é desconhecido, ou quando o valor
- * anterior é zero e o atual não é (taxa indefinida) — nunca inventa 0% nem
- * retorna Infinity.
+ * Variação percentual real entre dois valores: `((atual - anterior) /
+ * anterior) * 100`, 1 casa decimal. `null` ("Dados insuficientes" na UI)
+ * quando qualquer um dos lados é desconhecido OU quando o valor anterior é
+ * zero — nunca inventa crescimento de 0% e nunca retorna Infinity.
  */
 export function growthBetween(current: number | null | undefined, previous: number | null | undefined): number | null {
   if (current === null || current === undefined || previous === null || previous === undefined) return null;
-  if (previous === 0) return current === 0 ? 0 : null;
-  return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
+  if (previous === 0) return null;
+  return Math.round(((current - previous) / previous) * 1000) / 10;
 }

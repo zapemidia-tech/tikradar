@@ -45,8 +45,8 @@ describe('growthBetween', () => {
     expect(growthBetween(null, null)).toBeNull();
   });
 
-  it('trata divisão por zero sem gerar Infinity', () => {
+  it('nunca calcula quando o valor anterior é zero (mesmo 0->0 vira "dados insuficientes", não 0%)', () => {
     expect(growthBetween(50, 0)).toBeNull();
-    expect(growthBetween(0, 0)).toBe(0);
+    expect(growthBetween(0, 0)).toBeNull();
   });
 });

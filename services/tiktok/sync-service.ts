@@ -49,6 +49,13 @@ export class TikTokBestsellersSyncService{
       throw new Error(message);
     }
 
+    // Opportunity Score depende do histórico de product_snapshots recém
+    // gravado. Recalcular aqui é o que preenche opportunity_scores com
+    // dados reais — uma falha nesse passo não deve derrubar uma
+    // sincronização que já teve sucesso, então só registra e segue.
+    try{await this.repo.recomputeOpportunityScores()}
+    catch(error){console.error('Falha ao recalcular Opportunity Score:',describeUnknownError(error))}
+
     await this.repo.finishRun(runId,'success',counts);
     return counts;
   }

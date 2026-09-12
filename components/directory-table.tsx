@@ -1,6 +1,6 @@
 'use client';
 import type { Creator, Shop, Video } from '@/types';
-import { brl, compact, num, text } from '@/lib/format';
+import { brl, compact, growthPct, num, relativeDate, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_NOT_IN_API } from '@/lib/format';
 import { EmptyState } from './state-message';
 
 export function CreatorsTable({ items }: { items: Creator[] }) {
@@ -15,12 +15,12 @@ export function CreatorsTable({ items }: { items: Creator[] }) {
             <tr>
               <th>CRIADOR</th>
               <th>SEGUIDORES</th>
-              <th>VENDAS (7D)</th>
+              <th title={TOOLTIP_NOT_IN_API}>VENDAS</th>
               <th>GMV</th>
               <th>PRODUTOS</th>
               <th>VIEWS</th>
               <th>ENGAJAMENTO</th>
-              <th>CRESCIMENTO</th>
+              <th>CRESCIMENTO (GMV)</th>
             </tr>
           </thead>
           <tbody>
@@ -33,15 +33,17 @@ export function CreatorsTable({ items }: { items: Creator[] }) {
                     <small>{text(x.username)}</small>
                   </div>
                 </td>
-                <td>{compact(x.followers)}</td>
+                <td title={x.followers === null ? TOOLTIP_NOT_IN_API : undefined}>{compact(x.followers)}</td>
                 <td>{compact(x.sales)}</td>
                 <td>{brl(x.gmv)}</td>
-                <td>{num(x.products)}</td>
-                <td>{compact(x.views)}</td>
-                <td>{x.engagement === null ? 'Não informado' : `${x.engagement.toFixed(1)}%`}</td>
-                <td>
+                <td title={x.products === null ? TOOLTIP_NOT_IN_API : undefined}>{num(x.products)}</td>
+                <td title={x.views === null ? TOOLTIP_NOT_IN_API : undefined}>{compact(x.views)}</td>
+                <td title={x.engagement === null ? TOOLTIP_NOT_IN_API : undefined}>
+                  {x.engagement === null ? 'Não informado' : `${x.engagement.toFixed(1)}%`}
+                </td>
+                <td title={x.growth === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
                   {x.growth === null ? (
-                    'Não informado'
+                    growthPct(x.growth)
                   ) : (
                     <span className={x.growth >= 0 ? 'growth' : 'negative'}>
                       {x.growth >= 0 ? '↗' : '↘'} {x.growth}%
@@ -126,10 +128,10 @@ export function VideosTable({ items }: { items: Video[] }) {
               <th>CRIADOR</th>
               <th>VIEWS</th>
               <th>ENGAJAMENTO</th>
-              <th>VENDAS ATRIBUÍDAS (7D)</th>
+              <th title={TOOLTIP_NOT_IN_API}>VENDAS ATRIBUÍDAS</th>
               <th>GMV</th>
               <th>POSTADO</th>
-              <th>CRESCIMENTO</th>
+              <th>CRESCIMENTO (VIEWS)</th>
             </tr>
           </thead>
           <tbody>
@@ -149,15 +151,19 @@ export function VideosTable({ items }: { items: Video[] }) {
                       </small>
                     </div>
                   </td>
-                  <td>{text(x.creator)}</td>
+                  <td title={x.creator === null ? 'A resposta de vídeos não traz um identificador de criador, só o nome em texto livre — sem vínculo confiável ao catálogo de criadores.' : undefined}>
+                    {text(x.creator)}
+                  </td>
                   <td>{compact(x.views)}</td>
-                  <td>{engagementRate === null ? 'Não informado' : `${engagementRate.toFixed(1)}%`}</td>
-                  <td>{compact(x.sales)}</td>
+                  <td title={engagementRate === null ? TOOLTIP_NOT_IN_API : undefined}>
+                    {engagementRate === null ? 'Não informado' : `${engagementRate.toFixed(1)}%`}
+                  </td>
+                  <td title={x.sales === null ? 'A API Bestsellers de vídeos não retorna vendas, pedidos ou unidades vendidas.' : undefined}>{compact(x.sales)}</td>
                   <td>{brl(x.gmv)}</td>
-                  <td>{text(x.date)}</td>
-                  <td>
+                  <td title={x.date === null ? TOOLTIP_NOT_IN_API : undefined}>{relativeDate(x.date)}</td>
+                  <td title={x.growth === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
                     {x.growth === null ? (
-                      'Não informado'
+                      growthPct(x.growth)
                     ) : (
                       <span className={x.growth >= 0 ? 'growth' : 'negative'}>
                         {x.growth >= 0 ? '↗' : '↘'} {x.growth}%

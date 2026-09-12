@@ -2,10 +2,13 @@
 import { useState } from 'react';
 import type { Product } from '@/types';
 import { ArrowUpRight, Heart, Sparkles, Users, Video } from 'lucide-react';
-import { brl, compact, num, text } from '@/lib/format';
+import { brl, compact, growthPct, num, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
 import { EmptyState } from './state-message';
 
-const FILTERS = ['Todos', 'Crescimento explosivo', 'Baixa saturação', 'Alta comissão', 'Poucos criadores'] as const;
+// "Alta comissão" saiu: nenhuma API autorizada configurada neste projeto
+// retorna comissão (ver README), então esse filtro nunca teria resultado
+// com dados reais — troquei por "Alto rating", que usa um campo real.
+const FILTERS = ['Todos', 'Crescimento explosivo', 'Baixa saturação', 'Alto rating', 'Poucos criadores'] as const;
 
 export function RadarGrid({ products }: { products: Product[] }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('Todos');
@@ -17,7 +20,7 @@ export function RadarGrid({ products }: { products: Product[] }) {
         filter === 'Todos' ||
         (filter === 'Crescimento explosivo' && (p.growth7d ?? -Infinity) > 200) ||
         (filter === 'Baixa saturação' && p.saturation !== null && ['Baixa', 'Muito baixa'].includes(p.saturation)) ||
-        (filter === 'Alta comissão' && (p.commission ?? -1) >= 15) ||
+        (filter === 'Alto rating' && (p.rating ?? 0) >= 4.5) ||
         (filter === 'Poucos criadores' && (p.creators ?? Infinity) < 50),
     )
     .slice(0, 12);
@@ -38,11 +41,18 @@ export function RadarGrid({ products }: { products: Product[] }) {
           {visible.map((p, i) => (
             <article className="opportunity-card" key={p.id}>
               <div className="opp-top">
-                <span className={'opp-image c' + (i % 4)}>{p.name.slice(0, 2).toUpperCase()}</span>
+                <span className={'opp-image c' + (i % 4)}>
+                  {p.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- URL externa da CDN da TikTok, domínio variável
+                    <img src={p.imageUrl} alt="" />
+                  ) : (
+                    p.name.slice(0, 2).toUpperCase()
+                  )}
+                </span>
                 <div>
                   <span className="status">
                     <Sparkles size={11} />
-                    {text(p.status).toUpperCase()}
+                    {p.status === null ? 'DADOS INSUFICIENTES' : text(p.status).toUpperCase()}
                   </span>
                   <h2>{p.name}</h2>
                   <p>
@@ -58,7 +68,9 @@ export function RadarGrid({ products }: { products: Product[] }) {
               </div>
               <div className="opp-price">
                 <strong>{brl(p.price)}</strong>
-                <span>Comissão {p.commission === null ? 'não informada' : `${p.commission}%`}</span>
+                <span title="Nenhuma API autorizada configurada neste projeto fornece comissão.">
+                  Comissão {p.commission === null ? 'não informada' : `${p.commission}%`}
+                </span>
               </div>
               <div className="opp-metrics">
                 <div>
@@ -69,10 +81,10 @@ export function RadarGrid({ products }: { products: Product[] }) {
                   <small>GMV 7 DIAS</small>
                   <strong>{brl(p.gmv)}</strong>
                 </div>
-                <div>
+                <div title={p.growth7d === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
                   <small>CRESCIMENTO</small>
                   {p.growth7d === null ? (
-                    <strong>Não informado</strong>
+                    <strong>{growthPct(p.growth7d)}</strong>
                   ) : (
                     <strong className="growth">
                       {p.growth7d >= 0 ? '↗' : '↘'} {p.growth7d}%
@@ -81,11 +93,11 @@ export function RadarGrid({ products }: { products: Product[] }) {
                 </div>
               </div>
               <div className="ranking-mini">
-                <span>
-                  Ranking Velocity <b>{p.rankingVelocity === null ? '—' : `${p.rankingVelocity >= 0 ? '+' : ''}${p.rankingVelocity}`}</b>
+                <span title={p.rankingVelocity === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
+                  Ranking Velocity <b>{p.rankingVelocity === null ? 'Dados insuficientes' : `${p.rankingVelocity >= 0 ? '+' : ''}${p.rankingVelocity}`}</b>
                 </span>
-                <span>
-                  Momentum <b>{p.momentum === null ? '—' : `${p.momentum >= 0 ? '+' : ''}${p.momentum}`}</b>
+                <span title={p.momentum === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
+                  Momentum <b>{p.momentum === null ? 'Dados insuficientes' : `${p.momentum >= 0 ? '+' : ''}${p.momentum}`}</b>
                 </span>
               </div>
               <div className="signal-row">
@@ -98,15 +110,15 @@ export function RadarGrid({ products }: { products: Product[] }) {
                   {num(p.videos)} vídeos <b>{p.newVideos === null ? '' : `+${p.newVideos}`}</b>
                 </span>
               </div>
-              <div className="opp-bottom">
+              <div className="opp-bottom" title={p.opportunityScore === null ? TOOLTIP_SCORE_INSUFFICIENT : undefined}>
                 <div className="radial-score" style={{ '--score': `${(p.opportunityScore ?? 0) * 3.6}deg` } as React.CSSProperties}>
                   <span>{p.opportunityScore === null ? '—' : p.opportunityScore}</span>
                 </div>
                 <div>
                   <small>OPPORTUNITY SCORE</small>
-                  <strong>{text(p.status)}</strong>
+                  <strong>{p.status === null ? 'Dados insuficientes' : text(p.status)}</strong>
                 </div>
-                <span className="sat">Saturação {p.saturation ? p.saturation.toLowerCase() : 'não informada'}</span>
+                <span className="sat">Saturação {p.saturation ? p.saturation.toLowerCase() : 'dados insuficientes'}</span>
               </div>
               <a href={`/products/${p.id}`}>
                 Ver análise completa <ArrowUpRight size={14} />

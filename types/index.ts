@@ -6,11 +6,18 @@ export type SaturationLevel = 'Muito baixa' | 'Baixa' | 'Média' | 'Alta' | 'Mui
 // significa "consultamos e não há valor" — a UI deve mostrar "Não informado"
 // em vez de inventar um número. Isso é diferente de `undefined`/opcional
 // (`originalPrice?`), que significa "não se aplica" (ex.: sem desconto).
+export interface OpportunityFactorSummary {
+  label: string;
+  weight: number;
+  normalizedValue: number;
+}
+
 export interface Product {
   id: string;
   name: string;
   shop: string | null;
   category: string | null;
+  imageUrl?: string;
   price: number | null;
   originalPrice?: number;
   sales24h: number | null;
@@ -28,6 +35,8 @@ export interface Product {
   rating: number | null;
   reviews: number | null;
   opportunityScore: number | null;
+  /** Fatores reais que formaram o score, para explicar na interface. `null`/vazio quando o score também é `null`. */
+  opportunityFactors: OpportunityFactorSummary[];
   saturation: SaturationLevel | null;
   status: string | null;
   rankingVelocity: number | null;

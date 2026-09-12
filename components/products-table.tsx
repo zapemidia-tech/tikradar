@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import type { Product } from '@/types';
 import { Heart, Search, SlidersHorizontal } from 'lucide-react';
-import { brl, compact, num, text } from '@/lib/format';
+import { brl, compact, growthPct, num, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_PERIOD_NOT_SYNCED, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
 import { EmptyState } from './state-message';
 
 const PAGE_SIZE = 20;
@@ -68,9 +68,9 @@ export function ProductsTable({ products }: { products: Product[] }) {
                   <tr>
                     <th>PRODUTO</th>
                     <th>PREÇO</th>
-                    <th>VENDAS 24H</th>
+                    <th title={TOOLTIP_PERIOD_NOT_SYNCED}>VENDAS 24H</th>
                     <th>GMV 7D</th>
-                    <th>CRESCIMENTO</th>
+                    <th>CRESCIMENTO (7D)</th>
                     <th>CRIADORES</th>
                     <th>SATURAÇÃO</th>
                     <th>SCORE</th>
@@ -81,7 +81,14 @@ export function ProductsTable({ products }: { products: Product[] }) {
                   {visible.map((p, i) => (
                     <tr key={p.id}>
                       <td>
-                        <span className={'product-img p' + (i % 3)}>{p.name.slice(0, 2).toUpperCase()}</span>
+                        <span className={'product-img p' + (i % 3)}>
+                          {p.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element -- URL externa da CDN da TikTok, domínio variável
+                            <img src={p.imageUrl} alt="" />
+                          ) : (
+                            p.name.slice(0, 2).toUpperCase()
+                          )}
+                        </span>
                         <div>
                           <a href={`/products/${p.id}`}>
                             <strong>{p.name}</strong>
@@ -97,9 +104,9 @@ export function ProductsTable({ products }: { products: Product[] }) {
                       </td>
                       <td>{compact(p.sales24h)}</td>
                       <td>{brl(p.gmv)}</td>
-                      <td>
+                      <td title={p.growth7d === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
                         {p.growth7d === null ? (
-                          <span>Não informado</span>
+                          <span>{growthPct(p.growth7d)}</span>
                         ) : (
                           <span className={p.growth7d >= 0 ? 'growth' : 'negative'}>
                             {p.growth7d >= 0 ? '↗' : '↘'} {p.growth7d}%
@@ -107,17 +114,17 @@ export function ProductsTable({ products }: { products: Product[] }) {
                         )}
                       </td>
                       <td>{num(p.creators)}</td>
-                      <td>
+                      <td title={p.saturation === null ? TOOLTIP_SCORE_INSUFFICIENT : undefined}>
                         {p.saturation ? (
                           <span className={'sat ' + p.saturation.replace(' ', '-').toLowerCase()}>{p.saturation}</span>
                         ) : (
-                          <span className="sat">Não informada</span>
+                          <span className="sat">Dados insuficientes</span>
                         )}
                       </td>
-                      <td>
+                      <td title={p.opportunityScore === null ? TOOLTIP_SCORE_INSUFFICIENT : undefined}>
                         <span className="score">{p.opportunityScore === null ? '—' : p.opportunityScore}</span>
                         <div className="score-text">
-                          <strong>{text(p.status)}</strong>
+                          <strong>{p.status === null ? 'Dados insuficientes' : text(p.status)}</strong>
                           <small>{num(p.videos)} vídeos</small>
                         </div>
                       </td>

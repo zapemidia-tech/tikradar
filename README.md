@@ -78,6 +78,7 @@ Arquivos em `supabase/migrations/`, aplicados **em ordem** pelo Supabase CLI ou 
 - `002_tiktok_bestsellers_snapshots.sql` — snapshots históricos e conexões TikTok
 - `003_security_privacy_controls.sql` — solicitações de privacidade e auditoria mínima
 - `004_profiles_and_roles.sql` — tabela `profiles` (`id`, `email`, `role`, `created_at`, `updated_at`), RLS, trigger de criação de perfil (`role = 'user'`) e trigger que impede o cliente de alterar `role`. **Idempotente.**
+- `005_video_engagement_and_product_media.sql` — colunas de `video_snapshots` (`likes`, `comments`, `shares`, `duration_seconds`, `publish_time`, `engagement_rate`) e `products.image_url`, campos que a resposta real da TikTok Shop já retorna. **Necessária antes de deployar este código** — sem ela, `/produtos` e `/vídeos` falham ao consultar essas colunas. **Idempotente.**
 
 ```bash
 supabase db push          # via CLI
@@ -172,6 +173,17 @@ Ou, para manter o arquivo desabilitado, deixe a primeira linha executável como 
 
 ## Scores, providers, segurança e TikTok Shop Open API
 
-Sem alterações nesta entrega. Ver `lib/scoring/`, `lib/providers/provider-factory.ts`, `docs/security/` e as páginas `/privacy`, `/security`, `/data-requests`. O modo `TIKTOK_DATA_PROVIDER=tiktok` continua exigindo credenciais reais, migrations aplicadas, autorização de Seller e adapter validado; em desenvolvimento há fallback explícito para o mock, em produção a aplicação falha de forma segura.
+`TIKTOK_DATA_PROVIDER=tiktok` faz `lib/providers/tiktok-shop-provider.ts` ler os dados **já sincronizados** no Supabase (`products/creators/videos/lives` + `*_snapshots`) — não chama a API da TikTok por requisição de página. Quem fala com a API é só o serviço de sincronização (`services/tiktok/*`), acionado pelo botão "Sincronizar agora" em `/admin/integrations/tiktok`. Em desenvolvimento, sem Supabase configurado, cai no mock; em produção, sem Supabase configurado, falha de forma segura (nunca mostra mock silenciosamente).
+
+Cada indicador só aparece quando existe um campo real correspondente na resposta oficial (inspecionado em `raw_payload`). Dois textos distintos cobrem ausência de dado:
+
+- **"Não informado"** — a API nunca retorna esse campo (ex.: comissão, vendas atribuídas de vídeo, seguidores de criador em sincronizações antigas).
+- **"Dados insuficientes"** — o campo depende de histórico (crescimento, velocidade/momentum de ranking, Opportunity Score) e ainda não há snapshots suficientes (mínimo 2, ou 3 no caso do score).
+
+O **Opportunity Score** (`lib/scoring/real-opportunity-score.ts`) é uma média ponderada só dos fatores realmente disponíveis — nenhum fator ausente vira zero, o peso dele é redistribuído entre os presentes. Pesos, referências de normalização e o mínimo de fatores exigido ficam centralizados e documentados nesse arquivo. Resultado salvo (append-only) em `opportunity_scores` a cada sincronização bem-sucedida de produtos.
+
+**Comissão** e **vendas/unidades atribuídas** não têm fonte em nenhum endpoint usado por este projeto (`/analytics/202511/{products|creators|videos|lives}/bestselling`) — confirmado inspecionando `raw_payload` real. Preencher esses campos exigiria um endpoint adicional da TikTok Shop (comissão do produto/afiliado e atribuição de vendas por conteúdo/pedido), com escopo próprio além de `data.bestselling.public.read`, que este projeto não implementa e não deve simular.
+
+Ver também `lib/providers/provider-factory.ts`, `docs/security/` e as páginas `/privacy`, `/security`, `/data-requests`.
 
 Nunca preencha ou compartilhe `.env.example`. Copie-o para `.env.local`, preencha apenas localmente e mantenha fora do controle de versão.

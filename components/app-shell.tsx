@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { markTabAlive, shouldEndUnrememberedSession } from '@/lib/auth/remember';
+import { relativeDate } from '@/lib/format';
 
 const links = [
   ['/dashboard', LayoutDashboard, 'Dashboard'],
@@ -162,7 +163,7 @@ export function AppShell({ children, active }: { children: ReactNode; active?: s
           </button>
           <span
             className="live"
-            title={source.lastSync ? 'Última sincronização disponível' : 'Nenhuma sincronização real'}
+            title={source.lastSync ? `Última sincronização: ${relativeDate(source.lastSync)}` : 'Nenhuma sincronização real ainda'}
           >
             <i /> {source.label}
           </span>

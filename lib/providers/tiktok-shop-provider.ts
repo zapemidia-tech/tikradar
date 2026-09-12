@@ -1,9 +1,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ProductDataProvider } from './product-data-provider';
-import type { Creator, Live, Product, Shop, Video } from '@/types';
+import type { Creator, Live, OpportunityFactorSummary, Product, Shop, Video } from '@/types';
 import { TikTokConfigError } from '@/lib/tiktok/errors';
 import { groupSnapshotsByEntity, growthBetween, type EntitySnapshotGroup } from '@/lib/tiktok/snapshot-reduce';
 import { calculateRankingVelocity, calculateMomentum, type RankedSnapshot } from '@/lib/scoring/snapshot-analytics';
+import { calculateRealOpportunityScore } from '@/lib/scoring/real-opportunity-score';
+import { classifySaturation } from '@/lib/scoring/saturation-score';
+import { classifyOpportunity } from '@/lib/scoring/opportunity-score';
 
 // Provider que lê os dados REAIS sincronizados da TikTok Shop no Supabase
 // (products/creators/videos/lives + *_snapshots). Não chama a API da TikTok
@@ -11,9 +14,11 @@ import { calculateRankingVelocity, calculateMomentum, type RankedSnapshot } from
 // (services/tiktok/*), disparado pelo botão "Sincronizar agora" ou por job.
 //
 // Regra central: nunca inventa um indicador. Quando um campo não foi
-// sincronizado (ex.: comissão, engajamento) ou depende de um histórico que
-// ainda não existe (ex.: crescimento com um único snapshot), o valor fica
-// `null` e a UI mostra "Não informado".
+// sincronizado (ex.: comissão) o valor fica `null` e a UI mostra "Não
+// informado"; quando o campo depende de histórico que ainda não existe
+// (crescimento, velocidade de ranking, momentum, Opportunity Score) o valor
+// também fica `null`, mas a UI mostra "Dados insuficientes" — são coisas
+// diferentes (ver lib/format.ts).
 //
 // Hoje só sincronizamos o período '7D' (padrão de `syncAll`), então:
 // - `growth7d` é real: variação do valor entre os dois snapshots 7D mais
@@ -49,6 +54,12 @@ type VideoSnapshotRow = {
   views: number | null;
   sales: number | null;
   gmvEstimated: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  durationSeconds: number | null;
+  publishTime: string | null;
+  engagementRate: number | null;
 };
 
 type LiveSnapshotRow = {
@@ -69,17 +80,21 @@ export class TikTokShopProvider implements ProductDataProvider {
 
   // --- Produtos -------------------------------------------------------
   async getProducts(): Promise<Product[]> {
-    const [{ data: products, error: productsError }, { data: snapshots, error: snapshotsError }] = await Promise.all([
-      this.client.from('products').select('id,name'),
+    const [{ data: products, error: productsError }, { data: snapshots, error: snapshotsError }, { data: shops, error: shopsError }] = await Promise.all([
+      this.client.from('products').select('id,name,shop_id,image_url'),
       this.client
         .from('product_snapshots')
         .select('product_id,captured_at,ranking,sold_count,gmv_estimated,price,creator_count,video_count,review_count,rating')
         .eq('period', SNAPSHOT_PERIOD)
         .order('captured_at', { ascending: false })
         .limit(SNAPSHOT_ROW_LIMIT),
+      this.client.from('shops').select('id,name'),
     ]);
     if (productsError) throw productsError;
     if (snapshotsError) throw snapshotsError;
+    if (shopsError) throw shopsError;
+
+    const shopNameById = new Map((shops ?? []).map((s) => [s.id as string, s.name as string]));
 
     const rows: (ProductSnapshotRow & { productId: string })[] = (snapshots ?? []).map((s) => ({
       productId: s.product_id as string,
@@ -99,23 +114,44 @@ export class TikTokShopProvider implements ProductDataProvider {
     for (const p of products ?? []) {
       const group = grouped.get(p.id as string);
       if (!group) continue; // produto sem snapshot ainda: nada real a mostrar
-      result.push(this.mapProduct(p.id as string, p.name as string, group));
+      const shopName = p.shop_id ? (shopNameById.get(p.shop_id as string) ?? null) : null;
+      result.push(this.mapProduct(p.id as string, p.name as string, shopName, (p.image_url as string | null) ?? undefined, group));
     }
     return result;
   }
 
-  private mapProduct(id: string, name: string, group: EntitySnapshotGroup<ProductSnapshotRow>): Product {
+  private mapProduct(id: string, name: string, shopName: string | null, imageUrl: string | undefined, group: EntitySnapshotGroup<ProductSnapshotRow>): Product {
     const { latest, previous, series } = group;
     const growth7d = growthBetween(latest.soldCount, previous?.soldCount ?? null);
+    const gmvGrowth7d = growthBetween(latest.gmvEstimated, previous?.gmvEstimated ?? null);
     const rankedSeries: RankedSnapshot[] = series.map((s) => ({ capturedAt: s.capturedAt, ranking: s.ranking }));
     const hasVelocity = series.length >= 2;
+    const rankingVelocity = hasVelocity ? Math.round(calculateRankingVelocity(rankedSeries) * 10) / 10 : null;
+    const momentum = hasVelocity ? Math.round(calculateMomentum(rankedSeries) * 10) / 10 : null;
+
+    const opportunity = calculateRealOpportunityScore({
+      gmvGrowth7d,
+      rankingVelocity,
+      gmvVolume: latest.gmvEstimated,
+      creatorsCount: latest.creatorCount,
+      videosCount: latest.videoCount,
+      rating: latest.rating,
+      momentum,
+    });
+    const opportunityFactors: OpportunityFactorSummary[] = (opportunity?.factors ?? []).map((f) => ({
+      label: f.label,
+      weight: f.weight,
+      normalizedValue: f.normalizedValue,
+    }));
 
     return {
       id,
       name,
-      // shop_id/category_id não são preenchidos pela sincronização atual.
-      shop: null,
+      shop: shopName,
+      // category_id não é preenchido pela sincronização atual (a resposta
+      // Bestsellers de produtos não retorna categoria).
       category: null,
+      imageUrl,
       price: latest.price,
       originalPrice: undefined,
       sales24h: null, // não sincronizamos o período '1D'
@@ -129,16 +165,15 @@ export class TikTokShopProvider implements ProductDataProvider {
       videos: latest.videoCount,
       newVideos: previous ? Math.max(0, (latest.videoCount ?? 0) - (previous.videoCount ?? 0)) : null,
       views: null, // TikTok Shop não retorna views agregadas por produto
-      commission: null, // não sincronizado (produtos.commission nunca é preenchido pelo sync)
+      commission: null, // nenhuma API autorizada configurada neste projeto fornece comissão (ver README)
       rating: latest.rating,
       reviews: latest.reviewCount,
-      // Opportunity Score/Saturação exigem sinais que ainda não sincronizamos
-      // (comissão, nº de vendedores) — mostrar um score aqui seria inventar.
-      opportunityScore: null,
-      saturation: null,
-      status: null,
-      rankingVelocity: hasVelocity ? Math.round(calculateRankingVelocity(rankedSeries) * 10) / 10 : null,
-      momentum: hasVelocity ? Math.round(calculateMomentum(rankedSeries) * 10) / 10 : null,
+      opportunityScore: opportunity?.score ?? null,
+      opportunityFactors,
+      saturation: opportunity?.saturationScore != null ? classifySaturation(opportunity.saturationScore) : null,
+      status: opportunity ? classifyOpportunity(opportunity.score) : null,
+      rankingVelocity,
+      momentum,
       trend: growth7d === null ? null : growth7d > 20 ? 'Acelerando' : growth7d < 0 ? 'Em queda' : 'Estável',
       rankingHistory: series.map((s) => ({ date: dayKey(s.capturedAt), ranking: s.ranking })),
       history: series.map((s) => ({
@@ -192,20 +227,26 @@ export class TikTokShopProvider implements ProductDataProvider {
         id: c.id as string,
         name: c.name as string,
         username: (c.username as string | null) ?? null,
-        followers: (c.followers as number | null) ?? null, // não preenchido pelo sync atual
+        followers: (c.followers as number | null) ?? null,
         sales: latest.sales,
         gmv: latest.gmvEstimated,
         products: null, // creator_snapshots não relaciona produtos promovidos
         videos: latest.videoCount,
-        views: null, // não sincronizado
-        engagement: null, // não sincronizado
-        growth: growthBetween(latest.sales, previous?.sales ?? null),
+        views: null, // não retornado pela API para criadores
+        engagement: null, // não retornado pela API para criadores
+        // creator_snapshots não tem um campo de vendas real (a API não
+        // retorna isso para criadores) — o crescimento usa GMV, o sinal
+        // real disponível.
+        growth: growthBetween(latest.gmvEstimated, previous?.gmvEstimated ?? null),
       });
     }
     return result;
   }
 
-  // --- Lojas: não sincronizadas ainda (sync cobre products/creators/videos/lives) ---
+  // --- Lojas: entidade populada a partir de shop_id/shop_name reais de
+  // produtos sincronizados (ver sync-repository). Sem métricas próprias
+  // sincronizadas ainda (vendas/GMV/criadores por loja) — por isso a lista
+  // fica vazia até esse dado existir, em vez de mostrar números fabricados.
   async getShops(): Promise<Shop[]> {
     return [];
   }
@@ -221,7 +262,7 @@ export class TikTokShopProvider implements ProductDataProvider {
       this.client.from('videos').select('id,creator_id,product_id,url,posted_at'),
       this.client
         .from('video_snapshots')
-        .select('video_id,captured_at,ranking,views,sales,gmv_estimated')
+        .select('video_id,captured_at,ranking,views,sales,gmv_estimated,likes,comments,shares,duration_seconds,publish_time,engagement_rate')
         .eq('period', SNAPSHOT_PERIOD)
         .order('captured_at', { ascending: false })
         .limit(SNAPSHOT_ROW_LIMIT),
@@ -243,6 +284,12 @@ export class TikTokShopProvider implements ProductDataProvider {
       views: s.views,
       sales: s.sales,
       gmvEstimated: s.gmv_estimated,
+      likes: s.likes,
+      comments: s.comments,
+      shares: s.shares,
+      durationSeconds: s.duration_seconds,
+      publishTime: s.publish_time,
+      engagementRate: s.engagement_rate,
     }));
     const grouped = groupSnapshotsByEntity(rows, (r) => r.videoId);
 
@@ -256,13 +303,15 @@ export class TikTokShopProvider implements ProductDataProvider {
         creator: v.creator_id ? (creatorNameById.get(v.creator_id as string) ?? null) : null,
         product: v.product_id ? (productNameById.get(v.product_id as string) ?? null) : null,
         views: latest.views,
-        likes: null, // TikTok Shop Bestsellers não retorna curtidas/comentários/compartilhamentos
-        comments: null,
-        shares: null,
-        sales: latest.sales,
+        likes: latest.likes,
+        comments: latest.comments,
+        shares: latest.shares,
+        sales: latest.sales, // API Bestsellers de vídeos não retorna vendas/pedidos — fica sempre null
         gmv: latest.gmvEstimated,
-        date: (v.posted_at as string | null) ?? null, // não preenchido pelo sync atual
-        growth: growthBetween(latest.sales, previous?.sales ?? null),
+        date: latest.publishTime ?? (v.posted_at as string | null) ?? null,
+        // "Vendas atribuídas" não existe na fonte (ver README), então o
+        // crescimento do vídeo usa visualizações — o sinal real disponível.
+        growth: growthBetween(latest.views, previous?.views ?? null),
         url: (v.url as string | null) ?? undefined,
       });
     }

@@ -2,11 +2,11 @@
 import { useState } from 'react';
 import type { Product } from '@/types';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { brl, compact, NA, num, pct, rating, shortDate, text } from '@/lib/format';
+import { brl, compact, INSUFFICIENT, NA, num, pct, rating, shortDate, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_NOT_IN_API, TOOLTIP_SCORE_INSUFFICIENT } from '@/lib/format';
 import { Heart, Share2, Store, Star, Users, Video } from 'lucide-react';
 
 function growthLabel(value: number | null): string {
-  if (value === null) return NA;
+  if (value === null) return INSUFFICIENT;
   if (value > 50) return 'Muito alto';
   if (value > 15) return 'Alto';
   if (value >= 0) return 'Estável';
@@ -44,10 +44,17 @@ export function ProductDetail({ product }: { product: Product }) {
   return (
     <>
       <div className="product-hero">
-        <div className="large-image">{product.name.slice(0, 2).toUpperCase()}</div>
+        <div className="large-image">
+          {product.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- URL externa da CDN da TikTok, domínio variável
+            <img src={product.imageUrl} alt="" />
+          ) : (
+            product.name.slice(0, 2).toUpperCase()
+          )}
+        </div>
         <div className="product-info">
           <div className="breadcrumbs">Produtos / {text(product.category)}</div>
-          <span className="status">{text(product.status).toUpperCase()}</span>
+          <span className="status">{product.status === null ? 'DADOS INSUFICIENTES' : text(product.status).toUpperCase()}</span>
           <h1>{product.name}</h1>
           <p>
             {text(product.shop)} · <Star size={12} fill="currentColor" /> {rating(product.rating)}
@@ -56,7 +63,7 @@ export function ProductDetail({ product }: { product: Product }) {
           <div className="price-line">
             <strong>{brl(product.price)}</strong>
             {product.originalPrice && <del>{brl(product.originalPrice)}</del>}
-            <span>{product.commission === null ? 'Comissão não informada' : `${product.commission}% comissão`}</span>
+            <span title={TOOLTIP_NOT_IN_API}>{product.commission === null ? 'Comissão não informada' : `${product.commission}% comissão`}</span>
           </div>
           <div className="hero-actions">
             <button onClick={() => setFav((x) => !x)}>
@@ -69,10 +76,10 @@ export function ProductDetail({ product }: { product: Product }) {
         </div>
         <div className="analysis-card">
           <p className="eyebrow green">ANÁLISE TIKRADAR</p>
-          <div className="analysis-score">
+          <div className="analysis-score" title={product.opportunityScore === null ? TOOLTIP_SCORE_INSUFFICIENT : undefined}>
             <span>{product.opportunityScore === null ? '—' : product.opportunityScore}</span>
             <div>
-              <strong>{text(product.status)}</strong>
+              <strong>{product.status === null ? INSUFFICIENT : text(product.status)}</strong>
               <small>de 100 pontos</small>
             </div>
           </div>
@@ -83,18 +90,29 @@ export function ProductDetail({ product }: { product: Product }) {
             </div>
             <div>
               <dt>Saturação</dt>
-              <dd>{text(product.saturation)}</dd>
+              <dd>{product.saturation === null ? INSUFFICIENT : text(product.saturation)}</dd>
             </div>
             <div>
-              <dt>Concorrência</dt>
+              <dt title={TOOLTIP_NOT_IN_API}>Concorrência</dt>
               <dd>{NA}</dd>
             </div>
             <div>
               <dt>Velocidade</dt>
-              <dd>{text(product.trend)}</dd>
+              <dd>{product.trend === null ? INSUFFICIENT : text(product.trend)}</dd>
             </div>
           </dl>
           <p className="explanation">{buildExplanation(product)}</p>
+          {product.opportunityFactors.length > 0 && (
+            <ul className="score-factors">
+              {product.opportunityFactors.map((f) => (
+                <li key={f.label}>
+                  <span>{f.label}</span>
+                  <b>{f.normalizedValue}/100</b>
+                  <small>peso {f.weight}%</small>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 
@@ -157,14 +175,18 @@ export function ProductDetail({ product }: { product: Product }) {
             <b>02</b>
             <p>
               <strong>Novos criadores</strong>
-              <span>{product.newCreators === null ? NA : `+${product.newCreators} perfis desde a sincronização anterior.`}</span>
+              <span title={product.newCreators === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
+                {product.newCreators === null ? INSUFFICIENT : `+${product.newCreators} perfis desde a sincronização anterior.`}
+              </span>
             </p>
           </div>
           <div>
             <b>03</b>
             <p>
               <strong>Saturação</strong>
-              <span>{product.saturation ? `Classificada como ${product.saturation.toLowerCase()}.` : NA}</span>
+              <span title={product.saturation === null ? TOOLTIP_SCORE_INSUFFICIENT : undefined}>
+                {product.saturation ? `Classificada como ${product.saturation.toLowerCase()}.` : INSUFFICIENT}
+              </span>
             </p>
           </div>
         </article>
@@ -204,19 +226,19 @@ export function ProductDetail({ product }: { product: Product }) {
         </article>
         <article className="panel ranking-signals">
           <h2>Sinais do Radar</h2>
-          <div>
+          <div title={product.rankingVelocity === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
             <span>Velocidade no ranking</span>
-            <strong>{product.rankingVelocity === null ? NA : `${product.rankingVelocity >= 0 ? '+' : ''}${product.rankingVelocity}/dia`}</strong>
+            <strong>{product.rankingVelocity === null ? INSUFFICIENT : `${product.rankingVelocity >= 0 ? '+' : ''}${product.rankingVelocity}/dia`}</strong>
           </div>
-          <div>
+          <div title={product.momentum === null ? TOOLTIP_NEEDS_HISTORY : undefined}>
             <span>Momentum</span>
             <strong className={product.momentum !== null && product.momentum >= 0 ? 'growth' : product.momentum !== null ? 'negative' : ''}>
-              {product.momentum === null ? NA : `${product.momentum >= 0 ? '+' : ''}${product.momentum}`}
+              {product.momentum === null ? INSUFFICIENT : `${product.momentum >= 0 ? '+' : ''}${product.momentum}`}
             </strong>
           </div>
           <div>
             <span>Tendência</span>
-            <strong>{text(product.trend)}</strong>
+            <strong>{product.trend === null ? INSUFFICIENT : text(product.trend)}</strong>
           </div>
         </article>
       </div>
