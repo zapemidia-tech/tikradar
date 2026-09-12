@@ -11,6 +11,7 @@ import {
   Heart,
   LayoutDashboard,
   LogOut,
+  Menu,
   Search,
   Settings,
   Shield,
@@ -19,6 +20,7 @@ import {
   Video,
   TriangleAlert,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { markTabAlive, shouldEndUnrememberedSession } from '@/lib/auth/remember';
@@ -51,6 +53,10 @@ export function AppShell({ children, active }: { children: ReactNode; active?: s
   const router = useRouter();
   const [source, setSource] = useState({ label: 'Dados demonstrativos', lastSync: null as string | null });
   const [me, setMe] = useState<Me>(null);
+  // Menu lateral no celular: escondido por padrão (sidebar fica fora da tela
+  // via transform), só abre com o botão do topbar. Fecha ao navegar (troca
+  // de página desmonta/remonta o AppShell) ou ao tocar no fundo escurecido.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // "Lembrar sessão": encerra a sessão se for uma nova sessão de navegador.
   useEffect(() => {
@@ -109,15 +115,21 @@ export function AppShell({ children, active }: { children: ReactNode; active?: s
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
-        <a className="brand" href="/dashboard">
-          <span className="brand-mark">
-            <Sparkles size={17} />
-          </span>
-          <span>TikRadar</span>
-        </a>
+      {mobileNavOpen && <div className="sidebar-backdrop" onClick={() => setMobileNavOpen(false)} />}
+      <aside className={mobileNavOpen ? 'sidebar sidebar-open' : 'sidebar'}>
+        <div className="sidebar-head">
+          <a className="brand" href="/dashboard">
+            <span className="brand-mark">
+              <Sparkles size={17} />
+            </span>
+            <span>TikRadar</span>
+          </a>
+          <button className="sidebar-close" aria-label="Fechar menu" onClick={() => setMobileNavOpen(false)}>
+            <X size={18} />
+          </button>
+        </div>
         <p className="eyebrow">INTELIGÊNCIA</p>
-        <nav>
+        <nav onClick={() => setMobileNavOpen(false)}>
           {links.map(([href, Icon, label]) => (
             <a className={active === href ? 'nav-item active' : 'nav-item'} href={href} key={href}>
               <Icon size={18} />
@@ -153,6 +165,9 @@ export function AppShell({ children, active }: { children: ReactNode; active?: s
       </aside>
       <section className="content">
         <header className="topbar">
+          <button className="mobile-menu" aria-label="Abrir menu" onClick={() => setMobileNavOpen(true)}>
+            <Menu size={20} />
+          </button>
           <div className="search">
             <Search size={17} />
             <span>Buscar produtos, lojas ou criadores...</span>

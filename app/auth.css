@@ -20,7 +20,7 @@
 .auth-remember input {
   width: 15px;
   height: 15px;
-  accent-color: #21b6d2;
+  accent-color: var(--teal);
 }
 .auth-form form > a.auth-link-inline {
   display: inline;
@@ -36,14 +36,14 @@
   margin: 16px 0 0;
 }
 .auth-message.is-error {
-  background: rgba(216, 95, 74, 0.12);
-  border: 1px solid rgba(216, 95, 74, 0.4);
-  color: #f0b8ac;
+  background: var(--negative-soft);
+  border: 1px solid rgba(239, 147, 130, 0.35);
+  color: var(--negative);
 }
 .auth-message.is-success {
-  background: rgba(53, 242, 191, 0.1);
-  border: 1px solid rgba(53, 242, 191, 0.35);
-  color: #8ff7d9;
+  background: var(--positive-soft);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  color: var(--positive);
 }
 
 .auth-spinner {
