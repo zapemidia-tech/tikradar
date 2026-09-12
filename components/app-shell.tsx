@@ -28,6 +28,7 @@ const links = [
   ['/dashboard', LayoutDashboard, 'Dashboard'],
   ['/products', Box, 'Produtos'],
   ['/radar', Compass, 'Radar de Oportunidades'],
+  ['/new-in-radar', Sparkles, 'Novos no radar'],
   ['/creators', Users, 'Criadores'],
   ['/shops', Store, 'Lojas'],
   ['/videos', Video, 'Vídeos'],

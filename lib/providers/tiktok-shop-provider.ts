@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ProductDataProvider } from './product-data-provider';
-import type { Creator, Live, OpportunityFactorSummary, Product, Shop, Video } from '@/types';
+import type { Creator, Live, NewInRadarProduct, OpportunityFactorSummary, Product, Shop, Video } from '@/types';
 import { TikTokConfigError } from '@/lib/tiktok/errors';
 import { groupSnapshotsByEntity, growthBetween, type EntitySnapshotGroup } from '@/lib/tiktok/snapshot-reduce';
 import { calculateRankingVelocity, calculateMomentum, type RankedSnapshot } from '@/lib/scoring/snapshot-analytics';
@@ -8,6 +8,7 @@ import { calculateRealOpportunityScore } from '@/lib/scoring/real-opportunity-sc
 import { classifySaturation } from '@/lib/scoring/saturation-score';
 import { classifyOpportunity } from '@/lib/scoring/opportunity-score';
 import { calculateEstimatedSales } from '@/lib/scoring/estimated-sales';
+import { checkGmvReliability, classifyGmvTier, isWithinLastDays } from '@/lib/scoring/new-in-radar';
 
 // Provider que lê os dados REAIS sincronizados da TikTok Shop no Supabase
 // (products/creators/videos/lives + *_snapshots). Não chama a API da TikTok
@@ -68,6 +69,24 @@ type LiveSnapshotRow = {
   ranking: number;
   gmvEstimated: number | null;
 };
+
+// "Novos no radar" precisa do raw_payload (para confirmar período/moeda via
+// checkGmvReliability) e de gmv_min/gmv_max (a faixa ORIGINAL — nunca só o
+// ponto médio) além do que as outras leituras de produto já usam.
+type NewInRadarSnapshotRow = {
+  capturedAt: string;
+  ranking: number;
+  period: string;
+  gmvMin: number | null;
+  gmvMax: number | null;
+  gmvEstimated: number | null;
+  price: number | null;
+  soldCount: number | null;
+  creatorCount: number | null;
+  rawPayload: unknown;
+};
+
+const NEW_IN_RADAR_WINDOW_DAYS = 7;
 
 export class TikTokShopProvider implements ProductDataProvider {
   private client: SupabaseClient;
@@ -378,6 +397,120 @@ export class TikTokShopProvider implements ProductDataProvider {
       result.push({ id: l.id as string, name: l.name as string, gmv: group.latest.gmvEstimated, ranking: group.latest.ranking });
     }
     return result.sort((a, b) => (a.ranking ?? Infinity) - (b.ranking ?? Infinity));
+  }
+
+  // --- Novos no radar --------------------------------------------------
+  // Critério de entrada: 1) `products.created_at` (= o instante da 1ª linha
+  // gravada para este product_id — confirmado em 2026-09-12 comparando com
+  // min(product_snapshots.captured_at) em produção; ver
+  // supabase/migrations/007_new_in_radar_indexes.sql) caiu nos últimos 7
+  // dias; 2) o GMV 7D (limite inferior da faixa) do snapshot mais recente é
+  // de pelo menos R$ 10 mil E passa em `checkGmvReliability` (período 7D,
+  // moeda BRL, faixa consistente com o raw_payload bruto). Produto que não
+  // passa nesses critérios simplesmente não aparece — nunca aparece com um
+  // valor inventado.
+  async getNewInRadar(): Promise<NewInRadarProduct[]> {
+    // Um único `now` para o filtro no Supabase e para a re-checagem em
+    // isWithinLastDays logo abaixo — evita qualquer drift de poucos ms entre
+    // os dois (o filtro no banco é só uma otimização; isWithinLastDays,
+    // testada em tests/new-in-radar.test.ts, é a regra que vale de fato).
+    const now = new Date();
+    const cutoffIso = new Date(now.getTime() - NEW_IN_RADAR_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+    // Filtra por `created_at` no próprio Supabase (índice em
+    // products_created_at_idx) — nunca traz todo o catálogo para filtrar em
+    // memória. Normalmente são poucos produtos (só os detectados na última
+    // semana), então as consultas seguintes ficam pequenas por construção.
+    const { data: candidates, error: candidatesError } = await this.client
+      .from('products')
+      .select('id,name,shop_id,image_url,product_url,created_at')
+      .gte('created_at', cutoffIso);
+    if (candidatesError) throw candidatesError;
+    if (!candidates || candidates.length === 0) return [];
+
+    const productIds = candidates.map((p) => p.id as string);
+    const shopIds = [...new Set(candidates.map((p) => p.shop_id as string | null).filter((id): id is string => Boolean(id)))];
+
+    const [{ data: snapshots, error: snapshotsError }, { data: shops, error: shopsError }] = await Promise.all([
+      this.client
+        .from('product_snapshots')
+        .select('product_id,captured_at,ranking,period,gmv_min,gmv_max,gmv_estimated,price,sold_count,creator_count,raw_payload')
+        .in('product_id', productIds)
+        .eq('period', SNAPSHOT_PERIOD)
+        .order('captured_at', { ascending: false })
+        .limit(SNAPSHOT_ROW_LIMIT),
+      shopIds.length ? this.client.from('shops').select('id,name').in('id', shopIds) : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (snapshotsError) throw snapshotsError;
+    if (shopsError) throw shopsError;
+
+    const shopNameById = new Map((shops ?? []).map((s) => [s.id as string, s.name as string]));
+
+    const rows: (NewInRadarSnapshotRow & { productId: string })[] = (snapshots ?? []).map((s) => ({
+      productId: s.product_id as string,
+      capturedAt: s.captured_at as string,
+      ranking: s.ranking as number,
+      period: s.period as string,
+      gmvMin: s.gmv_min,
+      gmvMax: s.gmv_max,
+      gmvEstimated: s.gmv_estimated,
+      price: s.price,
+      soldCount: s.sold_count,
+      creatorCount: s.creator_count,
+      rawPayload: s.raw_payload,
+    }));
+    const grouped = groupSnapshotsByEntity(rows, (r) => r.productId);
+
+    const result: NewInRadarProduct[] = [];
+    for (const p of candidates) {
+      const id = p.id as string;
+      const createdAt = p.created_at as string;
+      // Critério 1: detectado nos últimos 7 dias (por milissegundos reais,
+      // não por corte de calendário — ver isWithinLastDays).
+      if (!isWithinLastDays(createdAt, NEW_IN_RADAR_WINDOW_DAYS, now)) continue;
+
+      const group = grouped.get(id);
+      if (!group) continue; // produto sem snapshot 7D ainda: nada real a mostrar
+      const { latest, previous, series } = group;
+
+      const reliability = checkGmvReliability({ period: latest.period, rawPayload: latest.rawPayload, gmvMin: latest.gmvMin, gmvMax: latest.gmvMax });
+      if (!reliability.ok) {
+        // Diagnóstico só no servidor — nunca expõe raw_payload ao cliente.
+        console.error(`[new-in-radar] produto ${id} excluído: ${reliability.reason}`);
+        continue;
+      }
+
+      // Critério 2: GMV 7D (limite inferior) de pelo menos R$ 10 mil.
+      const tier = classifyGmvTier(latest.gmvMin);
+      if (tier === null) continue;
+
+      const hasComparableHistory = previous !== null && series.length >= 2;
+      const rankingImproved = hasComparableHistory && previous !== null && latest.ranking < previous.ranking;
+      const gmvGrowthPct = hasComparableHistory ? growthBetween(latest.gmvEstimated, previous?.gmvEstimated ?? null) : null;
+      const gmvIncreased = gmvGrowthPct !== null && gmvGrowthPct > 0;
+
+      result.push({
+        id,
+        name: p.name as string,
+        shop: p.shop_id ? (shopNameById.get(p.shop_id as string) ?? null) : null,
+        imageUrl: (p.image_url as string | null) ?? undefined,
+        productUrl: (p.product_url as string | null) ?? undefined,
+        gmvRangeMin: latest.gmvMin as number,
+        gmvRangeMax: latest.gmvMax as number,
+        gmvTier: tier,
+        firstDetectedAt: createdAt,
+        ranking: latest.ranking,
+        price: latest.price, // sempre null nesta conta hoje — API não retorna preço no payload de bestselling (ver README)
+        soldCount: latest.soldCount, // idem — API não retorna quantidade vendida
+        commission: null, // nenhum endpoint autorizado neste projeto fornece comissão (ver README)
+        creators: latest.creatorCount, // idem price/soldCount
+        previousRanking: hasComparableHistory ? (previous?.ranking ?? null) : null,
+        gmvGrowthPct,
+        hasConfirmedGrowth: hasComparableHistory && (rankingImproved || gmvIncreased),
+        snapshotsCount: series.length,
+      });
+    }
+    return result;
   }
 }
 

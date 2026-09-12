@@ -24,6 +24,13 @@ export const rating = (n: number | null | undefined) => (n === null || n === und
 /** Texto livre (nome de loja, categoria, username...). */
 export const text = (s: string | null | undefined) => (s === null || s === undefined || s === '' ? NA : s);
 
+/** Data completa em pt-BR ("12/09/2026"), a partir de um ISO real. `NA` se ausente/inválida. */
+export const fullDate = (value: string | null | undefined) => {
+  if (!value) return NA;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? NA : date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
 /** Data curta em pt-BR ("05 set"), a partir de um ISO/dia (YYYY-MM-DD) real. */
 export const shortDate = (value: string) => {
   const date = new Date(value.length === 10 ? `${value}T00:00:00Z` : value);
@@ -36,6 +43,8 @@ export const shortDate = (value: string) => {
 // não há snapshots suficientes — os dois textos existem para não confundir
 // "a fonte não tem isso" com "ainda não dá pra calcular isso".
 export const INSUFFICIENT = 'Dados insuficientes';
+/** Wording específica de "Novos no radar" para evolução entre snapshots — distinta de INSUFFICIENT (usado em Opportunity Score/saturação). */
+export const HISTORY_INSUFFICIENT = 'Histórico insuficiente';
 
 /** Tooltips reutilizáveis para explicar por que um campo aparece vazio. */
 export const TOOLTIP_NOT_IN_API = 'A resposta oficial da TikTok Shop não traz este campo.';
@@ -46,6 +55,9 @@ export const TOOLTIP_SCORE_INSUFFICIENT = 'Faltam sinais reais suficientes (cres
 export const TOOLTIP_ESTIMATED_SALES =
   'Estimativa, não um dado oficial da TikTok Shop: GMV ÷ preço, no mesmo período. Pode ser impreciso — o preço pode ter mudado dentro da janela do GMV, e o próprio GMV já é o ponto médio de uma faixa estimada pela TikTok. Requer preço real do produto, que a API ainda não retorna para esta conta.';
 export const TOOLTIP_OPEN_PRODUCT = 'Abrir produto na TikTok Shop (nova aba)';
+export const TOOLTIP_GMV_TIER_CONSERVATIVE = 'Classificação conservadora baseada no limite inferior do GMV informado pelo TikTok — a faixa exibida é a faixa real recebida, não um ponto médio.';
+export const TOOLTIP_FIRST_DETECTED = 'O TikRadar viu este produto pela primeira vez nesta data (com base no histórico completo de sincronizações) — ele pode existir na TikTok Shop há mais tempo.';
+export const TOOLTIP_GROWTH_NEEDS_HISTORY = 'Só existe 1 snapshot deste produto até agora — é preciso pelo menos 2 sincronizações comparáveis (mesmo período, 7D) para calcular evolução real.';
 
 /** Percentual de crescimento: null sempre significa histórico insuficiente, nunca "campo ausente da API". */
 export const growthPct = (n: number | null | undefined) => (n === null || n === undefined ? INSUFFICIENT : `${n >= 0 ? '+' : ''}${n}%`);

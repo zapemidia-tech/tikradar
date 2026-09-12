@@ -112,3 +112,48 @@ export interface Live {
   gmv: number | null;
   ranking: number | null;
 }
+
+/** Ver lib/scoring/new-in-radar.ts para os critérios e limites exatos. */
+export type GmvTierId = 1 | 2 | 3 | 4;
+
+// "Novos no radar": produtos cuja primeira captura real (por product_id, em
+// todo o histórico de product_snapshots) ocorreu nos últimos 7 dias e cujo
+// GMV 7D (limite inferior da faixa que a TikTok retorna) é de pelo menos
+// R$ 10 mil. `firstDetectedAt` NUNCA é "data de lançamento"/"cadastro na
+// TikTok" — é só o momento em que o TikRadar viu o produto pela 1ª vez; ele
+// pode existir há mais tempo. Só entram produtos cujo GMV foi validado como
+// 7D/BRL/faixa consistente (ver checkGmvReliability) — os demais são
+// excluídos e o motivo fica só nos logs do servidor (nunca no cliente).
+export interface NewInRadarProduct {
+  id: string;
+  name: string;
+  shop: string | null;
+  imageUrl?: string;
+  // Mesma regra de products.productUrl: só existe quando a API retornar um
+  // campo real de link — nunca construída a partir do id.
+  productUrl?: string;
+  // Faixa ORIGINAL de GMV 7D em BRL, como a TikTok retornou — nunca o ponto
+  // médio (gmv_estimated) apresentado como se fosse um valor exato.
+  gmvRangeMin: number;
+  gmvRangeMax: number;
+  gmvTier: GmvTierId;
+  firstDetectedAt: string;
+  ranking: number;
+  // Campos que a resposta real de products/bestselling NUNCA retornou até
+  // agora nesta conta (ver README) — ficam aqui, sempre `null` hoje, só
+  // para a UI poder mostrar "Não informado" explicitamente em vez de
+  // omitir o campo (nunca tratar ausência como zero/confirmado).
+  price: number | null;
+  soldCount: number | null;
+  commission: number | null;
+  creators: number | null;
+  // Evolução real entre os dois snapshots 7D mais recentes deste produto.
+  // `null` em qualquer um dos três campos abaixo = histórico insuficiente
+  // (só existe 1 snapshot ainda) — nunca um crescimento inventado.
+  previousRanking: number | null;
+  gmvGrowthPct: number | null;
+  // true só quando há 2+ snapshots comparáveis E (ranking melhorou OU GMV
+  // cresceu) — nunca com base só na 1ª detecção.
+  hasConfirmedGrowth: boolean;
+  snapshotsCount: number;
+}

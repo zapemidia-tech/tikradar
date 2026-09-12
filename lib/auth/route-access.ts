@@ -26,6 +26,7 @@ export const PROTECTED_PREFIXES: readonly string[] = [
   '/admin',
   '/products',
   '/radar',
+  '/new-in-radar',
   '/creators',
   '/shops',
   '/videos',

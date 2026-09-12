@@ -43,10 +43,33 @@ function rangeNumber(value: string) {
   return amount * ({ K: 1e3, M: 1e6, B: 1e9 }[match[2]?.toUpperCase() as 'K' | 'M' | 'B'] ?? 1);
 }
 
+/**
+ * Extrai `{min, max, currency}` de uma string real de `gmv_range` (ex.:
+ * "BRL638343.60~BRL1067572.58"). Única fonte da regra de parsing dessa
+ * string — reaproveitada tanto aqui (sincronização) quanto em
+ * lib/scoring/new-in-radar.ts (que reanalisa o `raw_payload` já salvo para
+ * confirmar, antes de classificar um produto em "Novos no radar", que o
+ * período é 7D e a moeda é BRL — nunca confia cegamente no valor já
+ * gravado). `currency` vem `null` quando os dois lados da faixa não trazem
+ * o mesmo código de moeda de 3 letras (nunca assume uma moeda não vista no
+ * payload).
+ */
+export function parseGmvRangeString(value: string): { min: number | null; max: number | null; currency: string | null } {
+  const segments = value.split(/\s*[~–—-]\s*/);
+  const codeOf = (segment: string | undefined) => segment?.match(/^([A-Z]{3})/)?.[1] ?? null;
+  const currencyMin = codeOf(segments[0]);
+  const currencyMax = codeOf(segments[1] ?? segments[0]);
+  return {
+    min: rangeNumber(segments[0] ?? ''),
+    max: rangeNumber(segments[1] ?? segments[0] ?? ''),
+    currency: currencyMin && currencyMin === currencyMax ? currencyMin : null,
+  };
+}
+
 function gmv(value: unknown, currency: TikTokCurrency) {
   if (typeof value === 'string') {
-    const parts = value.split(/\s*[~–—-]\s*/).map(rangeNumber);
-    return normalizeGmvRange({ min: parts[0], max: parts[1] ?? parts[0], display: value, currency });
+    const { min, max } = parseGmvRangeString(value);
+    return normalizeGmvRange({ min, max, display: value, currency });
   }
   if (value && typeof value === 'object') {
     const r = value as JsonRecord;

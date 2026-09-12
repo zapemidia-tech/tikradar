@@ -19,7 +19,7 @@ O "middleware" do Next 16 fica em **`proxy.ts`** (na raiz). Ele renova a sessão
 | `/auth/callback` | Pública — troca o código do link por sessão |
 | `/privacy`, `/security`, `/data-requests` | Públicas |
 | `/dashboard` | Protegida — exige sessão |
-| `/products`, `/products/[id]`, `/radar`, `/creators`, `/shops`, `/videos`, `/categories`, `/favorites`, `/alerts`, `/settings` | Protegidas — exigem sessão |
+| `/products`, `/products/[id]`, `/radar`, `/new-in-radar`, `/creators`, `/shops`, `/videos`, `/categories`, `/favorites`, `/alerts`, `/settings` | Protegidas — exigem sessão |
 | `/admin` e `/admin/**` | Protegidas — exigem sessão **e** `role = 'admin'` (verificado no servidor) |
 | `/onboarding` | Redireciona para `/login` (cadastro público desabilitado) |
 
@@ -80,6 +80,7 @@ Arquivos em `supabase/migrations/`, aplicados **em ordem** pelo Supabase CLI ou 
 - `004_profiles_and_roles.sql` — tabela `profiles` (`id`, `email`, `role`, `created_at`, `updated_at`), RLS, trigger de criação de perfil (`role = 'user'`) e trigger que impede o cliente de alterar `role`. **Idempotente.**
 - `005_video_engagement_and_product_media.sql` — colunas de `video_snapshots` (`likes`, `comments`, `shares`, `duration_seconds`, `publish_time`, `engagement_rate`) e `products.image_url`, campos que a resposta real da TikTok Shop já retorna. **Necessária antes de deployar este código** — sem ela, `/produtos` e `/vídeos` falham ao consultar essas colunas. **Idempotente.**
 - `006_product_url.sql` — coluna `products.product_url`, para a miniatura do produto virar um link real para a página na TikTok Shop. Fica sempre `NULL`: nenhuma resposta real inspecionada até agora (2.161 `product_snapshots` + amostras de vídeos/criadores/lives, em 2026-09-12) traz um campo de link — só `product_image` (imagem, não página). A coluna existe pronta para quando a API passar a retornar isso (ver `productUrlFrom` em `services/tiktok/adapters.ts`). **Idempotente.**
+- `007_new_in_radar_indexes.sql` — 2 índices (`products.created_at`, `product_snapshots(product_id,period,captured_at)`) para a página **Novos no radar** consultar sem escanear o catálogo/histórico inteiro. Só cria índices, não muda dado nenhum. **Recomendada antes do deploy** (sem ela a página funciona, só faz sequential scan). **Idempotente.**
 
 ```bash
 supabase db push          # via CLI
@@ -188,6 +189,19 @@ O **Opportunity Score** (`lib/scoring/real-opportunity-score.ts`) é uma média 
 **Miniaturas clicáveis e "Vendas estimadas":** a miniatura do produto (em `/products`, `/radar`, `/products/[id]` e `/videos`) só vira um link (`target="_blank"`) quando existe uma URL real de produto (`Product.productUrl`/`Video.productUrl`) — nunca construída a partir do `product_id`. Hoje nenhum produto sincronizado tem essa URL: confirmado em 2026-09-12 inspecionando `raw_payload` de **todos** os `product_snapshots` já sincronizados (2.161 registros) e amostras de vídeos/criadores/lives — a resposta real só traz `id, name, rank, rating, shop_id, shop_name, gmv_range, product_image` (e variações por tipo de entidade); nenhum campo de link de produto existe. Ver `services/tiktok/adapters.ts` (função `productUrlFrom`) para onde mapear se a API passar a retornar isso.
 
 "**Vendas estimadas**" (GMV ÷ preço, no mesmo snapshot) é uma estimativa, nunca um dado oficial — fórmula e limitações documentadas em `lib/scoring/estimated-sales.ts`. Hoje aparece como "Não informado" para todos os produtos: a mesma inspeção confirmou que **nenhum** `product_snapshot` sincronizado tem `price` (nem `sold_count`) preenchido — a resposta real de produtos não traz preço para esta conta.
+
+### Novos no radar (`/new-in-radar`)
+
+Identifica produtos com potencial de venda: primeira aparição real (por `product_id`, em todo o histórico — não só a sincronização mais recente) nos últimos 7 dias **e** GMV 7D (limite inferior da faixa) de pelo menos R$ 10 mil. Regras puras e testadas em `lib/scoring/new-in-radar.ts` (`tests/new-in-radar.test.ts`, 27 casos: limites exatos de R$ 10 mil/20 mil/50 mil/100 mil, virada de dia/fuso, data no futuro, ISO inválido, período≠7D, moeda≠BRL, faixa invertida, `raw_payload` sem `gmv_range`, drift entre o gravado e o bruto). Consulta em `TikTokShopProvider.getNewInRadar()` (`lib/providers/tiktok-shop-provider.ts`).
+
+- **"Detectado pelo TikRadar em [data]"** — nunca chamado de "lançamento" ou "cadastro na TikTok": é `products.created_at`, o instante da 1ª linha gravada para aquele `product_id` (confirmado em 2026-09-12 comparando com `min(product_snapshots.captured_at)` em produção — bate em todos os casos verificados, porque o upsert de sincronização nunca reescreve `created_at` de um produto já existente). O produto pode existir na TikTok Shop há mais tempo — a UI deixa isso explícito.
+- **Confiabilidade do GMV**: antes de classificar um produto numa faixa, `checkGmvReliability` confirma no `raw_payload` bruto (não só nas colunas já calculadas) que o snapshot é do período `7D`, que a moeda do `gmv_range` é `BRL` (o texto real vem como `"BRL638343.60~BRL1067572.58"` — a moeda está embutida na própria string) e que `gmv_min`/`gmv_max` batem com uma nova análise desse texto. Produto que falha em qualquer checagem **não aparece** na página — o motivo vai só para `console.error` do servidor (nunca ao cliente, nunca com o `raw_payload` exposto).
+- **Faixas**: R$ 10 mil–<20 mil / R$ 20 mil–<50 mil / R$ 50 mil–<100 mil / R$ 100 mil+, mutuamente exclusivas pelo limite inferior (`classifyGmvTier`). O card mostra a faixa ORIGINAL (`gmv_min`–`gmv_max`), nunca o ponto médio, com a nota "Classificação conservadora baseada no limite inferior do GMV informado pelo TikTok".
+- **Evolução**: "Crescimento confirmado" só aparece com 2+ snapshots 7D comparáveis do mesmo produto E (ranking melhorou OU GMV cresceu) — reaproveita `growthBetween`/`groupSnapshotsByEntity`, já usados e testados no resto do app (Opportunity Score não foi alterado). Com 1 snapshot só, mostra "Histórico insuficiente", nunca um crescimento inventado.
+- **Preço, quantidade vendida, comissão e nº de criadores** aparecem explicitamente como "Não informado" quando ausentes — nunca omitidos nem tratados como zero.
+- **Miniatura clicável**: mesma regra de `Product.productUrl` — só abre a página real do produto quando a API retornar um campo de link de verdade. **Checagem real em produção (2026-09-12): os 112 produtos hoje elegíveis não têm esse campo — nenhuma miniatura abre link ainda.**
+- **Por que hoje aparecem muitos produtos**: a sincronização desta conta começou há poucos dias, então boa parte do catálogo tem `created_at` recente — é esperado, e a lista se restringe naturalmente a produtos genuinamente novos conforme mais tempo passa.
+- Consulta eficiente: filtra `products` por `created_at` no próprio Supabase (nunca traz o catálogo inteiro para o servidor) e só busca `product_snapshots` dos candidatos já filtrados — ver migration `007`.
 
 Ver também `lib/providers/provider-factory.ts`, `docs/security/` e as páginas `/privacy`, `/security`, `/data-requests`.
 

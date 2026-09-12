@@ -51,6 +51,15 @@ describe('rotas protegidas', () => {
     expect(isAdminPath('/admin/integrations/tiktok')).toBe(true);
     expect(isAdminPath('/dashboard')).toBe(false);
   });
+
+  it('/new-in-radar exige sessão, igual às demais páginas de dados', () => {
+    expect(resolveAccess({ pathname: '/new-in-radar', isAuthenticated: false })).toEqual({
+      action: 'redirect',
+      to: '/login?next=%2Fnew-in-radar',
+    });
+    expect(resolveAccess({ pathname: '/new-in-radar', isAuthenticated: true })).toEqual({ action: 'allow' });
+    expect(isProtectedPath('/new-in-radar')).toBe(true);
+  });
 });
 
 describe('acesso admin (servidor)', () => {
