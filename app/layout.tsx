@@ -27,13 +27,29 @@ export const metadata: Metadata = {
   twitter: { card: 'summary_large_image', title: 'TikRadar', description: 'Descubra os próximos produtos vencedores.', images: ['/og.png'] },
 };
 
+// Aplica o tema (claro/escuro) antes da primeira pintura, lendo a preferência
+// salva ou, na primeira visita, a preferência do sistema — evita o "flash"
+// de um tema errado entre o HTML do servidor (sempre escuro) e o cliente.
+const themeInitScript = `(function () {
+  try {
+    var stored = localStorage.getItem('tikradar-theme');
+    var theme = stored === 'light' || stored === 'dark'
+      ? stored
+      : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {}
+})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

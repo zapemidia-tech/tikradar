@@ -37,12 +37,12 @@
 }
 .auth-message.is-error {
   background: var(--negative-soft);
-  border: 1px solid rgba(239, 147, 130, 0.35);
+  border: 1px solid var(--negative-border);
   color: var(--negative);
 }
 .auth-message.is-success {
   background: var(--positive-soft);
-  border: 1px solid rgba(52, 211, 153, 0.35);
+  border: 1px solid var(--positive-border);
   color: var(--positive);
 }
 

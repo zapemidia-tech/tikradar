@@ -1,49 +1,67 @@
 @import 'tailwindcss';
 
 /* ==========================================================================
-   TikRadar — sistema de design
+   TikRadar — sistema de design (v2: claro/escuro, linguagem "Apple")
    ==========================================================================
-   Fonte única de verdade: esta é a única definição de :root do app (antes
-   havia uma paleta clara aqui, sempre sobrescrita por techno.css — os dois
-   nunca coexistiam de verdade, só confundiam). techno.css agora só cuida de
-   detalhes finos (scrollbar, seleção de texto, gráficos); extra.css estende
-   estas mesmas variáveis para telas específicas. Nunca redefina cor "à mão"
-   fora daqui — sempre pelas variáveis abaixo.
+   Fonte única de verdade: esta é a única definição de tokens do app. Cada
+   variável existe nas duas variações — escura (`:root`, também explícita em
+   `:root[data-theme="dark"]`) e clara (`:root[data-theme="light"]`) — nunca
+   redefina cor "à mão" fora daqui, sempre pelas variáveis abaixo, para que
+   qualquer tela funcione nos dois temas automaticamente. O atributo
+   `data-theme` é aplicado no <html> por um script síncrono em layout.tsx
+   (evita flash) e alternado pelo botão de tema no topbar.
 
-   Regra de uso do verde-água (--teal): só em ações (botões primários, link
+   Linguagem visual: superfícies quase neutras (pouquíssima diferença de
+   luminosidade entre camadas), bordas quase invisíveis, muito espaço em
+   branco, cantos generosos e sombras difusas — nunca um traço decorativo
+   forte. Regra do verde-água (--teal): só em ações (botões primários, link
    ativo do menu, foco de teclado) e destaques realmente importantes (score,
-   badge "ativo/conectado"). Crescimento positivo usa --positive (um verde
-   próximo, mas distinto) para não competir visualmente com as ações.
+   badge "ativo/conectado"). Crescimento positivo usa --positive (mais perto
+   do verde-sistema) para não competir visualmente com as ações.
    ========================================================================== */
-:root {
-  /* Superfícies — fundo mais suave que preto puro, com pouquíssima
-     diferença de luminosidade entre camadas (discretas, não "blocos"). */
-  --bg: #0b1117;
-  --surface: #101720;
-  --surface-2: #141c26;
-  --surface-hover: #182130;
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Superfícies — fundo quase preto, camadas com diferença mínima de
+     luminosidade (discretas, nunca "blocos"). */
+  --bg: #08090a;
+  --surface: #17181b;
+  --surface-2: #1e2023;
+  --surface-hover: #26282c;
 
   /* Bordas — sempre sutis; nunca a cor de destaque como borda decorativa. */
-  --border: rgba(255, 255, 255, 0.08);
-  --border-soft: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-soft: rgba(255, 255, 255, 0.06);
 
   /* Texto — hierarquia clara em 3 níveis. */
-  --ink: #eef2f6;
-  --muted: #8b98a5;
-  --muted-2: #5b6672;
+  --ink: #f5f5f7;
+  --muted: #98989d;
+  --muted-2: #68686d;
 
-  /* Acento — verde-água, só para ações/destaques. */
+  /* Acento — verde-água, só para ações/destaques. Texto sobre o acento é
+     escuro neste tema (o acento é claro o bastante para isso). */
   --teal: #2dd4bf;
-  --teal-strong: #22b3a1;
-  --teal-ink: #031512;
-  --teal-soft: rgba(45, 212, 191, 0.12);
-  --teal-soft-2: rgba(45, 212, 191, 0.06);
+  --teal-strong: #20b8a4;
+  --teal-ink: #04211d;
+  --teal-soft: rgba(45, 212, 191, 0.14);
+  --teal-soft-2: rgba(45, 212, 191, 0.07);
 
   /* Sinais de dados — distintos do acento, para não confundir "ação" com "informação". */
-  --positive: #34d399;
-  --positive-soft: rgba(52, 211, 153, 0.12);
-  --negative: #ef9382;
-  --negative-soft: rgba(239, 147, 130, 0.12);
+  --positive: #32d74b;
+  --positive-soft: rgba(50, 215, 75, 0.14);
+  --positive-border: rgba(50, 215, 75, 0.35);
+  --negative: #ff6961;
+  --negative-soft: rgba(255, 69, 58, 0.14);
+  --negative-border: rgba(255, 69, 58, 0.38);
+
+  /* Vidro — sidebar/topbar translúcidos. */
+  --glass-bg: rgba(9, 10, 11, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.16);
+  --shadow-pop: 0 20px 50px rgba(0, 0, 0, 0.5);
 
   /* Compat: nome histórico usado em várias telas (`className="eyebrow green"`,
      var(--green) em auth.css/legal.css/integration.css/ranking.css) —
@@ -51,15 +69,59 @@
   --green: var(--teal);
   --pale: var(--teal-soft);
   --line: var(--border);
+}
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* Superfícies — cinza muito claro no fundo, branco puro nos cartões (o
+     mesmo contraste sutil entre camadas do tema escuro, espelhado). */
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-2: #f5f5f7;
+  --surface-hover: #ececee;
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-soft: rgba(0, 0, 0, 0.05);
+
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --muted-2: #8e8e93;
+
+  /* Acento — mais saturado/escuro que no tema escuro para manter contraste
+     em cima do branco; texto sobre o acento vira claro. */
+  --teal: #0d9488;
+  --teal-strong: #0f766e;
+  --teal-ink: #ffffff;
+  --teal-soft: rgba(13, 148, 136, 0.1);
+  --teal-soft-2: rgba(13, 148, 136, 0.05);
+
+  --positive: #15803d;
+  --positive-soft: rgba(21, 128, 61, 0.1);
+  --positive-border: rgba(21, 128, 61, 0.3);
+  --negative: #dc2626;
+  --negative-soft: rgba(220, 38, 38, 0.1);
+  --negative-border: rgba(220, 38, 38, 0.32);
+
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(0, 0, 0, 0.06);
+
+  --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.03);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.05);
+  --shadow-pop: 0 20px 50px rgba(0, 0, 0, 0.14);
+
+  --green: var(--teal);
+  --pale: var(--teal-soft);
+  --line: var(--border);
+}
+
+:root {
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
   --radius-pill: 999px;
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.35);
 
-  --font-sans: var(--font-geist-sans), -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
 }
 
@@ -67,14 +129,19 @@
   box-sizing: border-box;
 }
 
+html {
+  background: var(--bg);
+}
+
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 /* Foco de teclado visível em qualquer elemento interativo — nunca `outline:none` sem substituto. */
@@ -88,6 +155,28 @@ a {
   color: inherit;
 }
 
+/* Transição suave ao alternar tema, restrita a elementos com fundo/borda
+   próprios (evita custo de aplicar em `*` e picos de repaint). */
+body,
+.sidebar,
+.topbar,
+.panel,
+.stats article,
+.opportunity-card,
+table,
+th,
+td,
+button,
+input,
+select,
+.search,
+.icon-button,
+.theme-toggle,
+.filters button,
+.nav-item {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
 /* -------------------------------------------------------------------------
    Estrutura: sidebar + topbar + conteúdo
    ------------------------------------------------------------------------- */
@@ -98,14 +187,16 @@ a {
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  width: 252px;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  width: 260px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border-right: 1px solid var(--glass-border);
   padding: 28px 16px;
   display: flex;
   flex-direction: column;
   z-index: 10;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, background-color 0.25s ease, border-color 0.25s ease;
 }
 
 .sidebar-head {
@@ -139,19 +230,21 @@ a {
 .sidebar-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(4, 7, 10, 0.6);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
   z-index: 9;
 }
 
 .brand-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
   background: var(--teal);
   color: var(--teal-ink);
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(45, 212, 191, 0.28);
 }
 
 .eyebrow {
@@ -175,7 +268,7 @@ a {
   height: 40px;
   border: 0;
   background: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -183,7 +276,7 @@ a {
   padding: 0 12px;
   font-size: 13px;
   text-align: left;
-  margin: 1px 0;
+  margin: 2px 0;
   cursor: pointer;
   text-decoration: none;
 }
@@ -194,9 +287,10 @@ a {
 }
 
 .nav-item.active {
-  background: var(--teal-soft);
-  color: var(--teal);
+  background: var(--teal);
+  color: var(--teal-ink);
   font-weight: 600;
+  box-shadow: 0 2px 10px rgba(45, 212, 191, 0.24);
 }
 
 .nav-item b {
@@ -207,6 +301,13 @@ a {
   padding: 2px 7px;
   font-size: 10px;
   font-weight: 700;
+}
+
+/* Sobre o fundo sólido do item ativo, o badge vira um chip translúcido na
+   própria cor de texto do acento (--teal-ink) — mantém contraste nos dois temas. */
+.nav-item.active b {
+  background: color-mix(in srgb, var(--teal-ink) 18%, transparent);
+  color: var(--teal-ink);
 }
 
 .sidebar-foot {
@@ -262,13 +363,14 @@ a {
 
 .topbar {
   height: 68px;
-  background: rgba(11, 17, 23, 0.85);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border-bottom: 1px solid var(--glass-border);
   display: flex;
   align-items: center;
   padding: 0 36px;
-  gap: 16px;
+  gap: 14px;
   position: sticky;
   top: 0;
   z-index: 5;
@@ -280,7 +382,7 @@ a {
   flex: 1;
   border: 1px solid var(--border);
   background: var(--surface);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -292,22 +394,30 @@ a {
 .search kbd {
   margin-left: auto;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 3px 6px;
   background: var(--surface-2);
   color: var(--muted-2);
 }
 
 .icon-button {
-  margin-left: auto;
+  flex-shrink: 0;
   width: 38px;
   height: 38px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--muted);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   position: relative;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-button:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
 }
 
 .icon-button i {
@@ -362,9 +472,9 @@ a {
 
 .title-row h1 {
   font-family: var(--font-sans);
-  font-size: 27px;
+  font-size: 29px;
   font-weight: 650;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
   line-height: 1.2;
   margin: 0 0 6px;
   color: var(--ink);
@@ -385,7 +495,7 @@ a {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--muted);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   height: 36px;
   padding: 0 14px;
   display: flex;
@@ -413,11 +523,18 @@ a {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .stats article {
   padding: 20px;
   min-width: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.stats article:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-pop);
 }
 
 .stat-icon {
@@ -575,7 +692,7 @@ a {
   height: 40px;
   width: 100%;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--teal);
   color: var(--teal-ink);
   font-size: 12px;
@@ -586,11 +703,13 @@ a {
   align-items: center;
   text-decoration: none;
   cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
 .radar-card > button:hover,
 .radar-card > a:hover {
   background: var(--teal-strong);
+  transform: translateY(-1px);
 }
 
 .radar-card > button span,

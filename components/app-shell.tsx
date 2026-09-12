@@ -12,10 +12,12 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   Search,
   Settings,
   Shield,
   Store,
+  Sun,
   Users,
   Video,
   TriangleAlert,
@@ -41,6 +43,55 @@ const links = [
 ] as const;
 
 type Me = { displayName: string; role: 'user' | 'admin' } | null;
+type Theme = 'light' | 'dark';
+
+/** Botão de alternância de tema (claro/escuro): lê o atributo já aplicado
+ * pelo script anti-flash em layout.tsx, alterna e persiste a escolha. */
+function ThemeToggle() {
+  const [theme, setTheme] = useState<Theme>('dark');
+  // O servidor sempre "chuta" escuro (não conhece a preferência salva do
+  // visitante); só depois de montar — quando o script anti-flash de
+  // layout.tsx já aplicou o atributo real no <html> — é seguro ler o tema
+  // verdadeiro. Até lá, não renderiza o botão: evita mostrar o ícone errado
+  // por um instante e qualquer divergência entre HTML do servidor e cliente.
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    // Sincroniza com o atributo do <html>, que é a fonte da verdade (definido
+    // pelo script anti-flash antes de qualquer render React) — não algo
+    // derivável durante a renderização em si.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+    setMounted(true);
+  }, []);
+
+  function toggle() {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    document.documentElement.setAttribute('data-theme', next);
+    try {
+      localStorage.setItem('tikradar-theme', next);
+    } catch {
+      /* ignora (modo privado, storage bloqueado etc.) */
+    }
+  }
+
+  if (!mounted) {
+    return <span className="icon-button theme-toggle" aria-hidden style={{ visibility: 'hidden' }} />;
+  }
+
+  return (
+    <button
+      className="icon-button theme-toggle"
+      type="button"
+      aria-label={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
+      title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+      onClick={toggle}
+    >
+      {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+    </button>
+  );
+}
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -173,6 +224,7 @@ export function AppShell({ children, active }: { children: ReactNode; active?: s
             <span>Buscar produtos, lojas ou criadores...</span>
             <kbd>⌘ K</kbd>
           </div>
+          <ThemeToggle />
           <button className="icon-button" aria-label="Notificações">
             <Bell size={18} />
             <i />

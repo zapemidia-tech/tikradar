@@ -147,11 +147,11 @@ export function ProductDetail({ product }: { product: Product }) {
             {hasHistory ? (
               <ResponsiveContainer>
                 <AreaChart data={product.history}>
-                  <CartesianGrid vertical={false} stroke="rgba(255,255,255,.06)" />
+                  <CartesianGrid vertical={false} stroke="var(--border-soft)" />
                   <XAxis dataKey="date" hide />
                   <YAxis hide />
                   <Tooltip labelFormatter={(label) => shortDate(String(label))} />
-                  <Area type="monotone" dataKey="sales" stroke="#2dd4bf" fill="rgba(45,212,191,.12)" strokeWidth={2} connectNulls />
+                  <Area type="monotone" dataKey="sales" stroke="var(--teal)" fill="var(--teal-soft)" strokeWidth={2} connectNulls />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -209,11 +209,11 @@ export function ProductDetail({ product }: { product: Product }) {
             {hasRankingHistory ? (
               <ResponsiveContainer>
                 <AreaChart data={product.rankingHistory}>
-                  <CartesianGrid vertical={false} stroke="rgba(255,255,255,.06)" />
-                  <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fill: '#5b6672', fontSize: 11 }} />
-                  <YAxis reversed domain={[1, 100]} tick={{ fill: '#5b6672', fontSize: 11 }} />
+                  <CartesianGrid vertical={false} stroke="var(--border-soft)" />
+                  <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fill: 'var(--muted-2)', fontSize: 11 }} />
+                  <YAxis reversed domain={[1, 100]} tick={{ fill: 'var(--muted-2)', fontSize: 11 }} />
                   <Tooltip labelFormatter={(label) => shortDate(String(label))} />
-                  <Area type="monotone" dataKey="ranking" stroke="#2dd4bf" fill="rgba(45,212,191,.12)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="ranking" stroke="var(--teal)" fill="var(--teal-soft)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
