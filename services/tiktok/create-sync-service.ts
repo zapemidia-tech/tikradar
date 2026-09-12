@@ -1,2 +1,7 @@
 import{getTikTokConfig,assertTikTokApiConfigured}from'@/lib/tiktok/config';import{TikTokShopClient}from'@/lib/tiktok/client';import{SupabaseTikTokTokenStore}from'@/lib/tiktok/token-store';import{BestsellersService}from'./bestsellers-service';import{TikTokBestsellersAdapter}from'./adapters';import{SupabaseSyncRepository}from'./sync-repository';import{TikTokBestsellersSyncService}from'./sync-service';
-export async function createTikTokSyncService(env:NodeJS.ProcessEnv=process.env,userId?:string){const connection=await new SupabaseTikTokTokenStore(env).latest(userId),config={...getTikTokConfig(env),accessToken:connection?.accessToken,refreshToken:connection?.refreshToken,shopCipher:connection?.shopCipher};assertTikTokApiConfigured(config);return new TikTokBestsellersSyncService(new BestsellersService(new TikTokShopClient(config)),new TikTokBestsellersAdapter(),new SupabaseSyncRepository(env),config.currency)}
+export async function createTikTokSyncService(env:NodeJS.ProcessEnv=process.env,userId?:string){const connection=await new SupabaseTikTokTokenStore(env).latest(userId),config={...getTikTokConfig(env),accessToken:connection?.accessToken,refreshToken:connection?.refreshToken,shopCipher:connection?.shopCipher};assertTikTokApiConfigured(config);
+// Região da loja autorizada (quando o OAuth já retornou uma) tem prioridade
+// sobre TIKTOK_SHOP_REGION — usada só para escolher o fuso horário da data
+// de referência (lib/tiktok/reference-date.ts), nada de OAuth é alterado.
+const region=connection?.sellerBaseRegion??config.region;
+return new TikTokBestsellersSyncService(new BestsellersService(new TikTokShopClient(config),region),new TikTokBestsellersAdapter(),new SupabaseSyncRepository(env),config.currency)}
