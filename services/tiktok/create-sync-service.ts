@@ -1,5 +1,10 @@
 import{getTikTokConfig,assertTikTokApiConfigured}from'@/lib/tiktok/config';import{TikTokShopClient}from'@/lib/tiktok/client';import{SupabaseTikTokTokenStore}from'@/lib/tiktok/token-store';import{BestsellersService}from'./bestsellers-service';import{TikTokBestsellersAdapter}from'./adapters';import{SupabaseSyncRepository}from'./sync-repository';import{TikTokBestsellersSyncService}from'./sync-service';
-export async function createTikTokSyncService(env:NodeJS.ProcessEnv=process.env,userId?:string){const connection=await new SupabaseTikTokTokenStore(env).latest(userId),config={...getTikTokConfig(env),accessToken:connection?.accessToken,refreshToken:connection?.refreshToken,shopCipher:connection?.shopCipher};assertTikTokApiConfigured(config);
+// 'bestsellers_sync' explícito: esta é A ÚNICA leitura de tiktok_connections
+// que alimenta a sincronização de dados públicos Bestsellers — nunca deve
+// pegar por engano uma conexão salva pelo fluxo "Minha loja" (mesmo que
+// mais recente), mesmo se o mesmo usuário/admin tiver as duas. Ver
+// lib/tiktok/connection-purpose.ts.
+export async function createTikTokSyncService(env:NodeJS.ProcessEnv=process.env,userId?:string){const connection=await new SupabaseTikTokTokenStore(env).latest(userId,'bestsellers_sync'),config={...getTikTokConfig(env),accessToken:connection?.accessToken,refreshToken:connection?.refreshToken,shopCipher:connection?.shopCipher};assertTikTokApiConfigured(config);
 // Região da loja autorizada (quando o OAuth já retornou uma) tem prioridade
 // sobre TIKTOK_SHOP_REGION — usada só para escolher o fuso horário da data
 // de referência (lib/tiktok/reference-date.ts), nada de OAuth é alterado.
