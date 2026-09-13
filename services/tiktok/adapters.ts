@@ -110,6 +110,23 @@ function productUrlFrom(): string | undefined {
   return undefined;
 }
 
+// Foto de perfil do criador. Verificado em 2026-09-12 inspecionando o
+// raw_payload real de 500 creator_snapshots (amostra recente, sobre 1.200
+// linhas então existentes nesta conta): o item de `creators` só traz `rank,
+// open_id, gmv_range, nick_name, user_name, likes_count, followers_count` —
+// nenhum campo de imagem. Os candidatos abaixo (`avatar`, `avatar_url`,
+// `avatar_larger`, `header_url`, `profile_image` — nomes usados por outras
+// APIs de perfil do TikTok, nunca confirmados nesta resposta) são checados
+// defensivamente, sem nunca inventar uma URL: se nenhum existir, retorna
+// undefined e a UI mostra um avatar neutro com iniciais. Se um deles (ou
+// outro campo real) aparecer numa sincronização futura, reaproveita este
+// mesmo mapeamento — como `imageUrlFrom` já faz para a imagem do produto.
+function avatarUrlFrom(item: JsonRecord): string | undefined {
+  const direct = stringValue(item.avatar, item.avatar_url, item.avatar_larger, item.header_url);
+  if (direct) return direct;
+  return imageUrlFrom(item.profile_image ?? item.avatar_image);
+}
+
 /** unix seconds -> ISO 8601, ou undefined se ausente/ inválido. */
 function isoFromUnixSeconds(value: unknown): string | undefined {
   const seconds = numberValue(value);
@@ -168,7 +185,7 @@ export class TikTokBestsellersAdapter implements BestsellersAdapter {
         views,
         shopExternalId: stringValue(item.shop_id),
         shopName: stringValue(item.shop_name),
-        imageUrl: imageUrlFrom(item.product_image),
+        imageUrl: kind === 'creators' ? avatarUrlFrom(item) : imageUrlFrom(item.product_image),
         productUrl: productUrlFrom(),
         likes,
         comments,

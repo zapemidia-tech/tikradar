@@ -1,12 +1,35 @@
 'use client';
-import type { Creator, Shop, Video } from '@/types';
-import { brl, compact, growthPct, num, relativeDate, text, TOOLTIP_NEEDS_HISTORY, TOOLTIP_NOT_IN_API } from '@/lib/format';
+import type { Creator, Shop, SnapshotPeriod, Video } from '@/types';
+import {
+  brl,
+  compact,
+  gmvRange,
+  growthPct,
+  num,
+  PERIOD_LABEL,
+  relativeDate,
+  text,
+  TOOLTIP_GMV_RANGE_ESTIMATE,
+  TOOLTIP_NEEDS_HISTORY,
+  TOOLTIP_NO_CREATOR_PRODUCT_LINK,
+  TOOLTIP_NOT_IN_API,
+} from '@/lib/format';
 import { EmptyState } from './state-message';
 import { ProductThumb } from './product-thumb';
+import { CreatorAvatar } from './creator-avatar';
 
-export function CreatorsTable({ items }: { items: Creator[] }) {
+export function CreatorsTable({ items, period }: { items: Creator[]; period: SnapshotPeriod }) {
   if (items.length === 0) {
-    return <EmptyState title="Nenhum criador sincronizado ainda" description="Rode uma sincronização em Admin → Integrações → TikTok Shop." />;
+    return (
+      <EmptyState
+        title="Nenhum criador sincronizado neste período"
+        description={
+          period === '7D'
+            ? 'Rode uma sincronização em Admin → Integrações → TikTok Shop.'
+            : `Este projeto ainda só sincronizou o período de ${PERIOD_LABEL['7D']} — o período de ${PERIOD_LABEL[period]} aparece aqui assim que uma sincronização futura o capturar.`
+        }
+      />
+    );
   }
   return (
     <article className="panel table-panel">
@@ -15,29 +38,33 @@ export function CreatorsTable({ items }: { items: Creator[] }) {
           <thead>
             <tr>
               <th>CRIADOR</th>
+              <th>RANKING</th>
+              <th>PERÍODO</th>
               <th>SEGUIDORES</th>
               <th title={TOOLTIP_NOT_IN_API}>VENDAS</th>
-              <th>GMV</th>
-              <th>PRODUTOS</th>
+              <th title={TOOLTIP_GMV_RANGE_ESTIMATE}>GMV (FAIXA)</th>
+              <th title={TOOLTIP_NO_CREATOR_PRODUCT_LINK}>PRODUTOS</th>
               <th>VIEWS</th>
               <th>ENGAJAMENTO</th>
               <th>CRESCIMENTO (GMV)</th>
             </tr>
           </thead>
           <tbody>
-            {items.slice(0, 25).map((x, i) => (
+            {items.slice(0, 25).map((x) => (
               <tr key={x.id}>
                 <td>
-                  <span className={'avatar a' + (i % 4)}>{x.name.slice(0, 2)}</span>
+                  <CreatorAvatar className="creator-avatar" name={x.name} imageUrl={x.imageUrl} />
                   <div>
                     <strong>{x.name}</strong>
                     <small>{text(x.username)}</small>
                   </div>
                 </td>
+                <td>{x.ranking === null ? 'Não informado' : `#${x.ranking}`}</td>
+                <td>{x.period === null ? 'Não informado' : PERIOD_LABEL[x.period]}</td>
                 <td title={x.followers === null ? TOOLTIP_NOT_IN_API : undefined}>{compact(x.followers)}</td>
                 <td>{compact(x.sales)}</td>
-                <td>{brl(x.gmv)}</td>
-                <td title={x.products === null ? TOOLTIP_NOT_IN_API : undefined}>{num(x.products)}</td>
+                <td title={TOOLTIP_GMV_RANGE_ESTIMATE}>{gmvRange(x.gmvRangeMin, x.gmvRangeMax)}</td>
+                <td title={x.products === null ? TOOLTIP_NO_CREATOR_PRODUCT_LINK : undefined}>{num(x.products)}</td>
                 <td title={x.views === null ? TOOLTIP_NOT_IN_API : undefined}>{compact(x.views)}</td>
                 <td title={x.engagement === null ? TOOLTIP_NOT_IN_API : undefined}>
                   {x.engagement === null ? 'Não informado' : `${x.engagement.toFixed(1)}%`}

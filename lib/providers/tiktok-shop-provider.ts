@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { ProductDataProvider } from './product-data-provider';
-import type { Creator, Live, NewInRadarProduct, OpportunityFactorSummary, Product, Shop, Video } from '@/types';
+import type { Creator, Live, NewInRadarProduct, OpportunityFactorSummary, Product, Shop, SnapshotPeriod, Video } from '@/types';
 import { TikTokConfigError } from '@/lib/tiktok/errors';
 import { groupSnapshotsByEntity, growthBetween, type EntitySnapshotGroup } from '@/lib/tiktok/snapshot-reduce';
 import { calculateRankingVelocity, calculateMomentum, type RankedSnapshot } from '@/lib/scoring/snapshot-analytics';
@@ -45,7 +45,10 @@ type ProductSnapshotRow = {
 type CreatorSnapshotRow = {
   capturedAt: string;
   ranking: number;
+  period: string;
   sales: number | null;
+  gmvMin: number | null;
+  gmvMax: number | null;
   gmvEstimated: number | null;
   videoCount: number | null;
 };
@@ -237,13 +240,32 @@ export class TikTokShopProvider implements ProductDataProvider {
   }
 
   // --- Criadores --------------------------------------------------------
-  async getCreators(): Promise<Creator[]> {
+  // `period` seleciona qual snapshot Bestsellers mostrar (1D/7D/30D — mesmos
+  // períodos que `time_slot` aceita na API real, ver services/tiktok/
+  // bestsellers-service.ts). Hoje só o período '7D' foi de fato sincronizado
+  // nesta conta (confirmado consultando creator_snapshots em produção,
+  // 2026-09-12: 100% das linhas têm period='7D') — pedir '1D'/'30D' devolve
+  // uma lista vazia até uma sincronização futura capturar esses períodos; a
+  // UI (`/creators`) mostra isso explicitamente, nunca como um erro.
+  //
+  // Relação criador↔produto: investigado nos payloads reais de creators
+  // (rank, open_id, gmv_range, nick_name, user_name, likes_count,
+  // followers_count), products (id, name, rank, rating, shop_id, shop_name,
+  // gmv_range, product_image), videos (id, rank, likes, views, shares,
+  // comments, duration, gmv_range, nick_name, publish_time, product_infos[])
+  // e lives (id, rank, title, open_id, duration, gmv_range, start_time,
+  // creator_name, creator_nick_name) — nenhum deles carrega um ID em comum
+  // entre criador e produto. `product_infos` de vídeos só tem product_id
+  // (sem creator_id no mesmo item); `creator_name`/`creator_nick_name` de
+  // lives são texto livre, sem ID. Por isso `products` abaixo é sempre
+  // `null`: nunca inferimos essa contagem por nome parecido.
+  async getCreators(period: SnapshotPeriod = SNAPSHOT_PERIOD): Promise<Creator[]> {
     const [{ data: creators, error: creatorsError }, { data: snapshots, error: snapshotsError }] = await Promise.all([
-      this.client.from('creators').select('id,name,username,followers'),
+      this.client.from('creators').select('id,name,username,followers,avatar_url'),
       this.client
         .from('creator_snapshots')
-        .select('creator_id,captured_at,ranking,sales,gmv_estimated,video_count')
-        .eq('period', SNAPSHOT_PERIOD)
+        .select('creator_id,captured_at,ranking,period,sales,gmv_min,gmv_max,gmv_estimated,video_count')
+        .eq('period', period)
         .order('captured_at', { ascending: false })
         .limit(SNAPSHOT_ROW_LIMIT),
     ]);
@@ -254,7 +276,10 @@ export class TikTokShopProvider implements ProductDataProvider {
       creatorId: s.creator_id as string,
       capturedAt: s.captured_at as string,
       ranking: s.ranking as number,
+      period: s.period as string,
       sales: s.sales,
+      gmvMin: s.gmv_min,
+      gmvMax: s.gmv_max,
       gmvEstimated: s.gmv_estimated,
       videoCount: s.video_count,
     }));
@@ -269,10 +294,18 @@ export class TikTokShopProvider implements ProductDataProvider {
         id: c.id as string,
         name: c.name as string,
         username: (c.username as string | null) ?? null,
+        // Ver Creator.imageUrl em types/index.ts: hoje sempre undefined
+        // nesta conta (nenhum raw_payload de criador traz foto), pronto para
+        // quando a coluna passar a ser preenchida por uma sincronização real.
+        imageUrl: (c.avatar_url as string | null) ?? undefined,
+        ranking: latest.ranking,
+        period: latest.period as SnapshotPeriod,
         followers: (c.followers as number | null) ?? null,
         sales: latest.sales,
         gmv: latest.gmvEstimated,
-        products: null, // creator_snapshots não relaciona produtos promovidos
+        gmvRangeMin: latest.gmvMin,
+        gmvRangeMax: latest.gmvMax,
+        products: null, // ver investigação de relação criador↔produto acima — nenhuma existe nos payloads reais
         videos: latest.videoCount,
         views: null, // não retornado pela API para criadores
         engagement: null, // não retornado pela API para criadores

@@ -57,13 +57,44 @@ export interface Product {
   history: { date: string; sales: number | null; gmv: number | null; creators: number | null; videos: number | null }[];
 }
 
+/** Período de um snapshot Bestsellers — só existem os períodos que este projeto
+ * já sincronizou de fato (ver TOOLTIP_PERIOD_NOT_SYNCED em lib/format.ts). */
+export type SnapshotPeriod = '1D' | '7D' | '30D';
+
 export interface Creator {
   id: string;
   name: string;
   username: string | null;
+  // Foto de perfil real da TikTok Shop — só existe quando a resposta
+  // Bestsellers de criadores retornar um campo de imagem (ver `avatarUrlFrom`
+  // em services/tiktok/adapters.ts). Inspecionando o raw_payload real de
+  // 500 creator_snapshots em 2026-09-12, os únicos campos vistos são `rank,
+  // open_id, gmv_range, nick_name, user_name, likes_count, followers_count`
+  // — nenhuma foto. Fica pronto para quando a API passar a retornar isso;
+  // até lá, a UI mostra um avatar neutro com iniciais (nunca uma foto
+  // inventada ou de outro criador).
+  imageUrl?: string;
+  // Posição no ranking Bestsellers do período consultado (`period` abaixo).
+  // `null` só se, por algum motivo, o snapshot mais recente não tiver
+  // ranking gravado — não deveria acontecer na prática (a coluna é NOT NULL),
+  // mas o tipo reflete a mesma cautela do resto do app.
+  ranking: number | null;
+  // Período do snapshot mostrado (1D/7D/30D). `null` só na ausência de
+  // qualquer snapshot para o período pedido.
+  period: SnapshotPeriod | null;
   followers: number | null;
   sales: number | null;
+  // Ponto médio da faixa de GMV (gmvRangeMin+gmvRangeMax)/2 — só para ordenar
+  // e calcular crescimento. Nunca exibir como se fosse um valor exato: use
+  // gmvRangeMin/gmvRangeMax para mostrar a faixa real recebida da TikTok.
   gmv: number | null;
+  gmvRangeMin: number | null;
+  gmvRangeMax: number | null;
+  // Sempre `null` hoje: nenhum payload real (produtos, criadores, vídeos ou
+  // lives) traz uma relação verificável entre creator_id e product_id — ver
+  // TikTokShopProvider.getCreators para os detalhes da investigação. Nunca
+  // associar por nome parecido/suposição; se um endpoint futuro trouxer essa
+  // relação, preencher aqui a contagem de produtos distintos.
   products: number | null;
   videos: number | null;
   views: number | null;

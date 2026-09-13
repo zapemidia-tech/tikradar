@@ -1,2 +1,2 @@
-import type{Creator,Live,NewInRadarProduct,Product,Shop,Video}from '@/types';
-export interface ProductDataProvider{getProducts():Promise<Product[]>;getProduct(id:string):Promise<Product|null>;getProductMetrics(id:string):Promise<Product['history']>;getCreators():Promise<Creator[]>;getShops():Promise<Shop[]>;getVideos():Promise<Video[]>;getLives():Promise<Live[]>;getNewInRadar():Promise<NewInRadarProduct[]>}
+import type{Creator,Live,NewInRadarProduct,Product,Shop,SnapshotPeriod,Video}from '@/types';
+export interface ProductDataProvider{getProducts():Promise<Product[]>;getProduct(id:string):Promise<Product|null>;getProductMetrics(id:string):Promise<Product['history']>;getCreators(period?:SnapshotPeriod):Promise<Creator[]>;getShops():Promise<Shop[]>;getVideos():Promise<Video[]>;getLives():Promise<Live[]>;getNewInRadar():Promise<NewInRadarProduct[]>}

@@ -214,7 +214,9 @@
 }
 
 .radar-filters button,
-.tabs button {
+.tabs button,
+.radar-filters a,
+.tabs a {
   white-space: nowrap;
   border: 1px solid var(--border);
   background: var(--surface);
@@ -223,16 +225,21 @@
   padding: 9px 15px;
   font-size: 11.5px;
   cursor: pointer;
+  text-decoration: none;
 }
 
 .radar-filters button:hover,
-.tabs button:hover {
+.tabs button:hover,
+.radar-filters a:hover,
+.tabs a:hover {
   color: var(--ink);
   background: var(--surface-hover);
 }
 
 .radar-filters button.active,
-.tabs button.active {
+.tabs button.active,
+.radar-filters a.active,
+.tabs a.active {
   background: var(--teal-soft);
   border-color: transparent;
   color: var(--teal);
@@ -768,6 +775,27 @@
   font-size: 10px;
   font-weight: 700;
   flex-shrink: 0;
+}
+
+/* Avatar da tabela de Criadores — maior que o `.avatar` genérico acima
+   (mesmo espírito do bump de `.product-img` para 64×64: uma foto de perfil
+   pequena demais não serve pra nada). Mostra a foto real quando existir
+   (ver CreatorAvatar); sem foto, as iniciais ficam nesse mesmo círculo. */
+.creator-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--teal);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  /* Quando é uma <img> (foto real) em vez de um <span> (iniciais) — object-fit
+     não tem efeito em <span>, então é seguro deixar na regra de base. */
+  object-fit: cover;
 }
 
 .creator-row div,

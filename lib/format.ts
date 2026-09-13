@@ -58,6 +58,22 @@ export const TOOLTIP_OPEN_PRODUCT = 'Abrir produto na TikTok Shop (nova aba)';
 export const TOOLTIP_GMV_TIER_CONSERVATIVE = 'Classificação conservadora baseada no limite inferior do GMV informado pelo TikTok — a faixa exibida é a faixa real recebida, não um ponto médio.';
 export const TOOLTIP_FIRST_DETECTED = 'O TikRadar viu este produto pela primeira vez nesta data (com base no histórico completo de sincronizações) — ele pode existir na TikTok Shop há mais tempo.';
 export const TOOLTIP_GROWTH_NEEDS_HISTORY = 'Só existe 1 snapshot deste produto até agora — é preciso pelo menos 2 sincronizações comparáveis (mesmo período, 7D) para calcular evolução real.';
+export const TOOLTIP_BESTSELLERS_LIMITED = 'O Bestsellers da TikTok Shop retorna um ranking limitado de criadores em destaque — não a totalidade de criadores ativos no TikTok Shop.';
+export const TOOLTIP_GMV_RANGE_ESTIMATE = 'Faixa estimada pela TikTok Shop, não um valor exato — o ponto médio é usado só para ordenar e calcular crescimento.';
+export const TOOLTIP_NO_CREATOR_PRODUCT_LINK = 'Os payloads reais desta API não trazem um ID em comum entre criador e produto — criadores e produtos vêm de listas independentes. Sem essa relação verificável, o TikRadar nunca associa por nome parecido ou suposição.';
+
+/** Rótulo em pt-BR de um período de snapshot Bestsellers, para abas de filtro e para "período consultado" por item. */
+export const PERIOD_LABEL: Record<'1D' | '7D' | '30D', string> = { '1D': '1 dia', '7D': '7 dias', '30D': '30 dias' };
+
+/** Lê `?period=` de uma URL (string, array — Next repete a chave — ou ausente) e valida contra os 3 períodos aceitos; qualquer outro valor (ou ausência) cai no padrão '7D'. */
+export function parsePeriodParam(value: string | string[] | undefined): '1D' | '7D' | '30D' {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === '1D' || raw === '7D' || raw === '30D' ? raw : '7D';
+}
+
+/** Faixa de GMV formatada ("R$ X – R$ Y"); NA se qualquer um dos limites faltar — nunca um ponto médio disfarçado de faixa. */
+export const gmvRange = (min: number | null | undefined, max: number | null | undefined) =>
+  min === null || min === undefined || max === null || max === undefined ? NA : `${brl(min)} – ${brl(max)}`;
 
 /** Percentual de crescimento: null sempre significa histórico insuficiente, nunca "campo ausente da API". */
 export const growthPct = (n: number | null | undefined) => (n === null || n === undefined ? INSUFFICIENT : `${n >= 0 ? '+' : ''}${n}%`);

@@ -82,6 +82,7 @@ export class SupabaseSyncRepository implements SyncRepository{
       if(kind==='creators'){
         if(item.username)entity.username=item.username;
         if(item.followersCount!==undefined)entity.followers=item.followersCount;
+        if(item.imageUrl)entity.avatar_url=item.imageUrl;
       }
       if(kind==='videos'){
         if(item.creatorExternalId&&creatorIdByExternalId.has(item.creatorExternalId))entity.creator_id=creatorIdByExternalId.get(item.creatorExternalId);
