@@ -184,6 +184,38 @@ describe('parseAnalyticsPage — mesma extração de página em qualquer versão
   });
 });
 
+// Reproduz a estrutura sanitizada REAL confirmada no diagnóstico em produção
+// em 2026-09-14 (loja sandbox BR): code:0, message:"Success", dataKeys só
+// ["latest_available_date","next_page_token","total_count"] — a própria
+// TikTok omite inteiramente a chave videos/products (em vez do `[]`
+// documentado) quando não há registro no período.
+describe('parseAnalyticsPage — chave videos/products OMITIDA pela TikTok (confirmado em produção, não é o `[]` documentado)', () => {
+  it('vídeo: chave ausente + total_count:0 + sem next_page_token -> sucesso sem registros (nunca formato inesperado)', () => {
+    const page = parseAnalyticsPage({ code: 0, message: 'Success', request_id: 'r1', data: { total_count: 0, next_page_token: '', latest_available_date: '2026-09-12' } }, 'videos');
+    expect(page).toEqual({ items: [], observedFields: [], totalCount: 0, nextPageToken: null, latestAvailableDate: '2026-09-12' });
+  });
+
+  it('produto: chave ausente + total_count:0 + sem next_page_token -> sucesso sem registros (nunca formato inesperado)', () => {
+    const page = parseAnalyticsPage({ code: 0, message: 'Success', request_id: 'r2', data: { total_count: 0, next_page_token: '', latest_available_date: '2026-09-12' } }, 'products');
+    expect(page).toEqual({ items: [], observedFields: [], totalCount: 0, nextPageToken: null, latestAvailableDate: '2026-09-12' });
+  });
+
+  it('vídeo: chave ausente MAS total_count > 0 -> continua formato inesperado (nunca descarta registros que a própria TikTok diz existir)', () => {
+    const page = parseAnalyticsPage({ code: 0, data: { total_count: 5, next_page_token: '', latest_available_date: '2026-09-12' } }, 'videos');
+    expect(page).toBeNull();
+  });
+
+  it('produto: chave ausente MAS há next_page_token -> continua formato inesperado (não pode ter mais página sem lista)', () => {
+    const page = parseAnalyticsPage({ code: 0, data: { total_count: 0, next_page_token: 'cGFnZV9udW1iZXI9Mg==', latest_available_date: '2026-09-12' } }, 'products');
+    expect(page).toBeNull();
+  });
+
+  it('vídeo: chave ausente E total_count não informado (nem 0, nem número) -> continua formato inesperado (caso ambíguo, nunca vira lista vazia por padrão)', () => {
+    const page = parseAnalyticsPage({ code: 0, data: { next_page_token: '', latest_available_date: '2026-09-12' } }, 'videos');
+    expect(page).toBeNull();
+  });
+});
+
 describe('describeSanitizedResponseShape — só chaves/tipos, nunca valores de negócio', () => {
   it('resposta de erro da TikTok: code/message/request_id capturados, dataKeys null (data nem veio)', () => {
     const shape = describeSanitizedResponseShape({ code: 105005, message: 'Access denied. The app is not authorized...', request_id: 'req1' }, 'videos');
@@ -195,6 +227,28 @@ describe('describeSanitizedResponseShape — só chaves/tipos, nunca valores de 
       dataKeys: null,
       arrayKey: 'videos',
       arrayValueShape: 'undefined',
+      totalCount: null,
+      nextPageToken: null,
+      latestAvailableDate: null,
+    });
+  });
+
+  it('estrutura real confirmada em produção (2026-09-14): captura total_count/next_page_token/latest_available_date mesmo com a lista ausente', () => {
+    const shape = describeSanitizedResponseShape(
+      { code: 0, message: 'Success', request_id: 'req6', data: { total_count: 0, next_page_token: '', latest_available_date: '2026-09-12' } },
+      'products',
+    );
+    expect(shape).toEqual({
+      code: 0,
+      message: 'Success',
+      hasRequestId: true,
+      rootKeys: ['code', 'message', 'request_id', 'data'],
+      dataKeys: ['total_count', 'next_page_token', 'latest_available_date'],
+      arrayKey: 'products',
+      arrayValueShape: 'undefined',
+      totalCount: 0,
+      nextPageToken: null, // string vazia normalizada pra null, igual ao resto do parser
+      latestAvailableDate: '2026-09-12',
     });
   });
 

@@ -101,20 +101,41 @@ export interface AnalyticsPage {
  * nunca lança por um campo secundário ausente; só falha (retorna null) se a
  * própria lista não existir/for do tipo errado, o que sinaliza formato
  * inesperado para o chamador tratar como "erro da API". Igual nas duas
- * versões — só o conteúdo de cada item muda entre elas. */
+ * versões — só o conteúdo de cada item muda entre elas.
+ *
+ * Exceção confirmada em produção em 2026-09-14 (loja sandbox BR, diagnóstico
+ * admin): a TikTok pode responder `code:0`/`message:"Success"` OMITINDO
+ * inteiramente a chave `videos`/`products` de `data` (em vez do `[]`
+ * documentado no Response Sample oficial) quando não há nenhum registro no
+ * período. Só tratamos isso como "sucesso sem registros" quando a própria
+ * TikTok CONFIRMA que não há nada mais a buscar: `total_count===0` E sem
+ * `next_page_token` — nunca incondicionalmente. Se `total_count` for `>0`,
+ * ausente/não numérico, ou houver `next_page_token`, a chave ausente
+ * continua sinalizando formato inesperado (pode haver registros sendo
+ * descartados por engano), e o chamador deve investigar antes de aceitar. */
 export function parseAnalyticsPage(raw: unknown, arrayKey: 'videos' | 'products'): AnalyticsPage | null {
   if (!isRecord(raw)) return null;
   const data = raw.data;
   if (!isRecord(data)) return null;
   const items = data[arrayKey];
+  const totalCount = num(data.total_count);
+  const nextPageToken = str(data.next_page_token) || null;
+  const latestAvailableDate = str(data.latest_available_date);
+
+  if (items === undefined) {
+    if (totalCount === 0 && !nextPageToken) {
+      return { items: [], observedFields: [], totalCount, nextPageToken, latestAvailableDate };
+    }
+    return null;
+  }
   if (!Array.isArray(items)) return null;
   const jsonItems = items.filter(isRecord);
   return {
     items: jsonItems,
     observedFields: jsonItems[0] ? Object.keys(jsonItems[0]) : [],
-    totalCount: num(data.total_count),
-    nextPageToken: str(data.next_page_token) || null,
-    latestAvailableDate: str(data.latest_available_date),
+    totalCount,
+    nextPageToken,
+    latestAvailableDate,
   };
 }
 
@@ -128,12 +149,14 @@ function describeShape(value: unknown): string {
   return typeof value;
 }
 
-/** Metadados sanitizados da resposta bruta da TikTok — SÓ nomes de chave e tipos,
- * nunca valores. Existe para logar no servidor quando `parseAnalyticsPage` falha
- * (formato inesperado) sem nunca arriscar registrar token, App Secret, shop_cipher
- * completo ou qualquer outro dado do payload — mesmo que o payload real tivesse
- * algum desses valores num lugar inesperado, só as CHAVES são lidas aqui, nunca
- * os valores (exceto `code`/`message`/`request_id`, que a própria doc oficial
+/** Metadados sanitizados da resposta bruta da TikTok — nomes de chave, tipos, e os 3
+ * campos de paginação que a própria doc oficial já descreve como agregados/não
+ * sensíveis (`total_count`, `next_page_token`, `latest_available_date` — nunca item
+ * de negócio, nunca token/secret/shop_cipher). Existe para mostrar no diagnóstico
+ * (e logar no servidor) quando `parseAnalyticsPage` falha (formato inesperado), sem
+ * nunca arriscar expor payload bruto — mesmo que o payload real tivesse algum campo
+ * sensível num lugar inesperado, só as CHAVES de `data` são lidas, nunca os valores
+ * dos itens (exceto `code`/`message`/`request_id`, que a própria doc oficial já
  * descreve como não sensíveis: status/mensagem de erro e um id de log). */
 export interface SanitizedResponseShape {
   code: number | null;
@@ -146,6 +169,12 @@ export interface SanitizedResponseShape {
   /** Qual chave foi checada (o que o chamador pediu pra extrair) e a forma do valor encontrado nela. */
   arrayKey: 'videos' | 'products';
   arrayValueShape: string;
+  /** `data.total_count` — usado pra decidir se uma chave ausente é sucesso-sem-registros ou formato inesperado. */
+  totalCount: number | null;
+  /** `data.next_page_token` — presença dele com a lista ausente é sinal de formato inesperado (não pode ter mais página sem lista). */
+  nextPageToken: string | null;
+  /** `data.latest_available_date` — sempre exibido, mesmo quando a lista falha, pra situar o diagnóstico no tempo. */
+  latestAvailableDate: string | null;
 }
 
 export function describeSanitizedResponseShape(raw: unknown, arrayKey: 'videos' | 'products'): SanitizedResponseShape {
@@ -158,6 +187,9 @@ export function describeSanitizedResponseShape(raw: unknown, arrayKey: 'videos' 
     dataKeys: isRecord(data) ? Object.keys(data) : null,
     arrayKey,
     arrayValueShape: describeShape(isRecord(data) ? data[arrayKey] : undefined),
+    totalCount: isRecord(data) ? num(data.total_count) : null,
+    nextPageToken: isRecord(data) ? str(data.next_page_token) || null : null,
+    latestAvailableDate: isRecord(data) ? str(data.latest_available_date) : null,
   };
 }
 

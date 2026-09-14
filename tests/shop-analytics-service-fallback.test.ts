@@ -141,9 +141,20 @@ describe('getShopVideoPerformancePage / getShopProductPerformancePage — code d
     await expect(getShopProductPerformancePage(client, window, '202605')).rejects.toThrow(TikTokSchemaError);
   });
 
-  it('sucesso (code 0) mas data sem a chave products — mesmo tratamento: erro de formato, não confundido com "sucesso sem registros"', async () => {
-    const client = fakeClientReturning({ code: 0, message: 'Success', request_id: 'req3', data: { total_count: 0 } });
+  it('sucesso (code 0), data sem a chave products, MAS total_count>0 — continua erro de formato (não descarta registros que a própria TikTok diz existir)', async () => {
+    const client = fakeClientReturning({ code: 0, message: 'Success', request_id: 'req3', data: { total_count: 5 } });
     await expect(getShopProductPerformancePage(client, window, '202605')).rejects.toThrow(TikTokSchemaError);
+  });
+
+  // Estrutura real confirmada no diagnóstico em produção em 2026-09-14 (loja
+  // sandbox BR): a própria TikTok omite a chave videos/products (em vez do
+  // `[]` documentado) quando não há registro no período — só é tratado como
+  // sucesso sem registros porque total_count:0 e sem next_page_token confirmam
+  // que não há nada mais a buscar (ver parseAnalyticsPage em lib/tiktok/shop-analytics.ts).
+  it('sucesso (code 0), data sem a chave products, total_count:0 e sem next_page_token — trata como sucesso sem registros (estrutura real confirmada em produção)', async () => {
+    const client = fakeClientReturning({ code: 0, message: 'Success', request_id: 'req3b', data: { total_count: 0, next_page_token: '', latest_available_date: '2026-09-12' } });
+    const page = await getShopProductPerformancePage(client, window, '202605');
+    expect(page).toEqual({ items: [], observedFields: [], totalCount: 0, nextPageToken: null, latestAvailableDate: '2026-09-12' });
   });
 
   it('sucesso sem registros de verdade (videos: []) passa normalmente — nunca tratado como formato inesperado', async () => {

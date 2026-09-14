@@ -18,6 +18,9 @@ interface SanitizedResponseShape {
   dataKeys: string[] | null;
   arrayKey: 'videos' | 'products';
   arrayValueShape: string;
+  totalCount: number | null;
+  nextPageToken: string | null;
+  latestAvailableDate: string | null;
 }
 
 interface SuccessDiagnostic {
@@ -77,14 +80,26 @@ function EndpointResult({ title, diagnostic }: { title: string; diagnostic: Endp
             {diagnostic.code !== undefined && ` (código ${diagnostic.code})`}
           </p>
           {diagnostic.shape && (
-            <>
+            <dl>
+              <div className="config-row">
+                <span>total_count</span>
+                <strong>{diagnostic.shape.totalCount ?? 'não informado'}</strong>
+              </div>
+              <div className="config-row">
+                <span>next_page_token</span>
+                <strong>{diagnostic.shape.nextPageToken ? 'presente (há mais páginas)' : 'ausente'}</strong>
+              </div>
+              <div className="config-row">
+                <span>latest_available_date</span>
+                <strong>{diagnostic.shape.latestAvailableDate ?? 'não informado'}</strong>
+              </div>
               <p style={{ fontSize: 11, color: 'var(--muted)', margin: '10px 0 6px' }}>
-                Metadados sanitizados da resposta (só nomes de chave e tipos — nunca valores, token, secret ou shop_cipher):
+                Metadados sanitizados da resposta (só nomes de chave, tipos e os campos agregados acima — nunca valores de item, token, secret ou shop_cipher):
               </p>
               <pre style={{ fontSize: 11, overflowX: 'auto', background: 'var(--surface)', padding: 10, borderRadius: 'var(--radius-sm)' }}>
                 {JSON.stringify(diagnostic.shape, null, 2)}
               </pre>
-            </>
+            </dl>
           )}
         </>
       )}
