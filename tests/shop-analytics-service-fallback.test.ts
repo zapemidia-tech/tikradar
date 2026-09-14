@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { TikTokShopClient } from '@/lib/tiktok/client';
-import { TikTokApiError } from '@/lib/tiktok/errors';
-import { fetchFirstShopProductPageWithFallback, fetchFirstShopVideoPageWithFallback, SHOP_ANALYTICS_VERSION_PREFERENCE } from '@/services/tiktok/shop-analytics-service';
+import { TikTokApiError, TikTokSchemaError } from '@/lib/tiktok/errors';
+import {
+  fetchFirstShopProductPageWithFallback,
+  fetchFirstShopVideoPageWithFallback,
+  getShopVideoPerformancePage,
+  getShopProductPerformancePage,
+  SHOP_ANALYTICS_VERSION_PREFERENCE,
+} from '@/services/tiktok/shop-analytics-service';
 import { SHOP_PRODUCT_PERFORMANCE_PATH, SHOP_VIDEO_PERFORMANCE_PATH } from '@/lib/tiktok/shop-analytics';
 
 // `TikTokShopClient.request` é o único ponto que toca rede (services/tiktok/
@@ -90,5 +96,78 @@ describe('fetchFirstShopProductPageWithFallback — mesmo comportamento pra prod
 describe('SHOP_ANALYTICS_VERSION_PREFERENCE', () => {
   it('202605 antes de 202509 — prioridade explícita pedida (mais completo primeiro)', () => {
     expect(SHOP_ANALYTICS_VERSION_PREFERENCE).toEqual(['202605', '202509']);
+  });
+});
+
+// Diagnóstico em produção (2026-09-14): as duas APIs 202605 reportaram "formato
+// inesperado". Os testes abaixo cobrem os 2 comportamentos acrescentados pra
+// investigar isso com segurança: (1) um `code` de erro da TikTok nunca é lido
+// como se fosse a ausência de dados — é classificado como erro de API antes de
+// qualquer tentativa de interpretar `data.videos`/`data.products`; (2) quando o
+// formato realmente é inesperado, o servidor loga só metadados sanitizados
+// (nunca o payload bruto, nunca token/secret/shop_cipher).
+describe('getShopVideoPerformancePage / getShopProductPerformancePage — code de erro checado antes das listas, log sanitizado no formato inesperado', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function fakeClientReturning(raw: unknown) {
+    const client = new TikTokShopClient({
+      provider: 'tiktok',
+      apiBaseUrl: 'https://example.com',
+      authBaseUrl: 'https://example.com',
+      authorizeUrl: 'https://example.com',
+      appKey: 'k',
+      appSecret: 's',
+      region: 'BR',
+      currency: 'LOCAL',
+      accessToken: 'token',
+      shopCipher: 'cipher',
+      isProduction: false,
+    });
+    (client as unknown as { request: () => Promise<unknown> }).request = async () => raw;
+    return client;
+  }
+
+  const window = { startDateGe: '2026-09-01', endDateLt: '2026-09-08' };
+
+  it('code de erro presente mesmo sem lançar (ex.: cliente customizado) vira TikTokApiError com esse code — nunca "formato inesperado"', async () => {
+    const client = fakeClientReturning({ code: 105005, message: 'Access denied. The app is not authorized to access this api.', request_id: 'req1' });
+    await expect(getShopVideoPerformancePage(client, window, '202605')).rejects.toMatchObject({ name: 'TikTokApiError', code: 105005 });
+  });
+
+  it('sucesso (code 0) mas data:null — estrutura sanitizada real que motivou o diagnóstico: continua "formato inesperado", nunca vira lista vazia silenciosa', async () => {
+    const client = fakeClientReturning({ code: 0, message: 'Success', request_id: 'req2', data: null });
+    await expect(getShopProductPerformancePage(client, window, '202605')).rejects.toThrow(TikTokSchemaError);
+  });
+
+  it('sucesso (code 0) mas data sem a chave products — mesmo tratamento: erro de formato, não confundido com "sucesso sem registros"', async () => {
+    const client = fakeClientReturning({ code: 0, message: 'Success', request_id: 'req3', data: { total_count: 0 } });
+    await expect(getShopProductPerformancePage(client, window, '202605')).rejects.toThrow(TikTokSchemaError);
+  });
+
+  it('sucesso sem registros de verdade (videos: []) passa normalmente — nunca tratado como formato inesperado', async () => {
+    const client = fakeClientReturning({ code: 0, data: { videos: [], total_count: 0, next_page_token: '', latest_available_date: '2026-09-10' } });
+    const page = await getShopVideoPerformancePage(client, window, '202605');
+    expect(page.items).toEqual([]);
+  });
+
+  it('no formato inesperado, loga só metadados sanitizados — nunca o payload, nunca token/secret/shop_cipher', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const client = fakeClientReturning({
+      code: 0,
+      message: 'Success',
+      request_id: 'req4',
+      data: { access_token: 'TOKEN-SECRETO-NUNCA-DEVE-APARECER', shop_cipher: 'CIPHER-SECRETO-COMPLETO' },
+    });
+    await expect(getShopVideoPerformancePage(client, window, '202605')).rejects.toThrow(TikTokSchemaError);
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const loggedArgs = errorSpy.mock.calls[0];
+    const serialized = JSON.stringify(loggedArgs);
+    expect(serialized).not.toContain('TOKEN-SECRETO-NUNCA-DEVE-APARECER');
+    expect(serialized).not.toContain('CIPHER-SECRETO-COMPLETO');
+    // mas identifica o problema: os NOMES das chaves de data vieram, mesmo sem os valores.
+    expect(loggedArgs.some((arg) => typeof arg === 'object' && arg !== null && JSON.stringify(arg).includes('access_token'))).toBe(true);
   });
 });

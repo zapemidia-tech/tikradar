@@ -59,7 +59,7 @@ export interface AnalyticsPageParams {
 }
 
 type JsonRecord = Record<string, unknown>;
-const isRecord = (v: unknown): v is JsonRecord => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+export const isRecord = (v: unknown): v is JsonRecord => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
 /** `{amount, currency}` documentado (gmv/gpm/aov/...) — `null` se a forma não bater, nunca inventado. */
 function money(value: unknown): { amount: string; currency: string } | null {
@@ -115,6 +115,49 @@ export function parseAnalyticsPage(raw: unknown, arrayKey: 'videos' | 'products'
     totalCount: num(data.total_count),
     nextPageToken: str(data.next_page_token) || null,
     latestAvailableDate: str(data.latest_available_date),
+  };
+}
+
+/** `typeof`/forma de um valor, sem NUNCA incluir o próprio valor — usado só em
+ * `describeSanitizedResponseShape` pra descrever `data.videos`/`data.products`
+ * sem arriscar vazar conteúdo (ex.: se um dia vier um objeto ali por engano). */
+function describeShape(value: unknown): string {
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return `array(${value.length})`;
+  return typeof value;
+}
+
+/** Metadados sanitizados da resposta bruta da TikTok — SÓ nomes de chave e tipos,
+ * nunca valores. Existe para logar no servidor quando `parseAnalyticsPage` falha
+ * (formato inesperado) sem nunca arriscar registrar token, App Secret, shop_cipher
+ * completo ou qualquer outro dado do payload — mesmo que o payload real tivesse
+ * algum desses valores num lugar inesperado, só as CHAVES são lidas aqui, nunca
+ * os valores (exceto `code`/`message`/`request_id`, que a própria doc oficial
+ * descreve como não sensíveis: status/mensagem de erro e um id de log). */
+export interface SanitizedResponseShape {
+  code: number | null;
+  message: string | null;
+  hasRequestId: boolean;
+  /** Nomes de chave no nível raiz do envelope (ex.: code, message, data, request_id). */
+  rootKeys: string[];
+  /** Nomes de chave em `data` — null se `data` não é um objeto (ausente, null, array, etc.). */
+  dataKeys: string[] | null;
+  /** Qual chave foi checada (o que o chamador pediu pra extrair) e a forma do valor encontrado nela. */
+  arrayKey: 'videos' | 'products';
+  arrayValueShape: string;
+}
+
+export function describeSanitizedResponseShape(raw: unknown, arrayKey: 'videos' | 'products'): SanitizedResponseShape {
+  const data = isRecord(raw) ? raw.data : undefined;
+  return {
+    code: isRecord(raw) && typeof raw.code === 'number' ? raw.code : null,
+    message: isRecord(raw) && typeof raw.message === 'string' ? raw.message : null,
+    hasRequestId: isRecord(raw) && typeof raw.request_id === 'string' && raw.request_id.length > 0,
+    rootKeys: isRecord(raw) ? Object.keys(raw) : [],
+    dataKeys: isRecord(data) ? Object.keys(data) : null,
+    arrayKey,
+    arrayValueShape: describeShape(isRecord(data) ? data[arrayKey] : undefined),
   };
 }
 

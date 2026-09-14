@@ -1,6 +1,8 @@
 import type { TikTokShopClient } from '@/lib/tiktok/client';
-import { TikTokSchemaError } from '@/lib/tiktok/errors';
+import { TikTokApiError, TikTokSchemaError } from '@/lib/tiktok/errors';
 import {
+  describeSanitizedResponseShape,
+  isRecord,
   isVersionUnavailableError,
   parseAnalyticsPage,
   SHOP_PRODUCT_PERFORMANCE_PATH,
@@ -31,19 +33,53 @@ function toQuery(params: AnalyticsPageParams) {
   };
 }
 
+// client.request já garante `response.ok && code===0` antes de RESOLVER a promise
+// (qualquer code de erro da TikTok já vira TikTokApiError lá dentro — ver
+// lib/tiktok/client.ts) — então, a rigor, quem chega até aqui já passou por essa
+// checagem. `assertNoApiErrorCode` só torna esse invariante explícito NESTE ponto
+// (onde `data.videos`/`data.products` está prestes a ser interpretado), como
+// segunda barreira: nunca confiar que "chegou até aqui" por si só prova sucesso,
+// e nunca reportar "formato inesperado" quando na verdade a própria TikTok já
+// tinha dito qual foi o erro.
+function assertNoApiErrorCode(raw: unknown): void {
+  if (!isRecord(raw)) return;
+  const code = typeof raw.code === 'number' ? raw.code : undefined;
+  if (code === undefined || code === 0) return;
+  const message = typeof raw.message === 'string' ? raw.message : `TikTok Shop respondeu code ${code}.`;
+  const requestId = typeof raw.request_id === 'string' ? raw.request_id : undefined;
+  throw new TikTokApiError(message, undefined, code, requestId);
+}
+
+/** Loga só metadados sanitizados (nunca o payload) quando a lista esperada não
+ * vem no formato documentado — para diagnosticar em produção sem nunca expor
+ * token, App Secret, shop_cipher completo ou dado de negócio. Ver
+ * `describeSanitizedResponseShape` (lib/tiktok/shop-analytics.ts) para a lista
+ * exata do que é logado. */
+function logUnexpectedFormat(endpoint: string, version: ShopAnalyticsApiVersion, raw: unknown, arrayKey: 'videos' | 'products'): void {
+  console.error(`[shop-analytics] formato inesperado em ${endpoint} (${version})`, describeSanitizedResponseShape(raw, arrayKey));
+}
+
 /** GET /analytics/<version>/shop_videos/performance — 1 página, versão explícita (sem fallback). */
 export async function getShopVideoPerformancePage(client: TikTokShopClient, params: AnalyticsPageParams, version: ShopAnalyticsApiVersion): Promise<AnalyticsPage> {
   const raw = await client.request(SHOP_VIDEO_PERFORMANCE_PATH[version], toQuery(params));
+  assertNoApiErrorCode(raw);
   const page = parseAnalyticsPage(raw, 'videos');
-  if (!page) throw new TikTokSchemaError(`Resposta de Shop Video Performance (${version}) em formato inesperado (data.videos ausente ou não é uma lista).`);
+  if (!page) {
+    logUnexpectedFormat('shop_videos/performance', version, raw, 'videos');
+    throw new TikTokSchemaError(`Resposta de Shop Video Performance (${version}) em formato inesperado (data.videos ausente ou não é uma lista).`);
+  }
   return page;
 }
 
 /** GET /analytics/<version>/shop_products/performance — 1 página, versão explícita (sem fallback). */
 export async function getShopProductPerformancePage(client: TikTokShopClient, params: AnalyticsPageParams, version: ShopAnalyticsApiVersion): Promise<AnalyticsPage> {
   const raw = await client.request(SHOP_PRODUCT_PERFORMANCE_PATH[version], toQuery(params));
+  assertNoApiErrorCode(raw);
   const page = parseAnalyticsPage(raw, 'products');
-  if (!page) throw new TikTokSchemaError(`Resposta de Shop Product Performance (${version}) em formato inesperado (data.products ausente ou não é uma lista).`);
+  if (!page) {
+    logUnexpectedFormat('shop_products/performance', version, raw, 'products');
+    throw new TikTokSchemaError(`Resposta de Shop Product Performance (${version}) em formato inesperado (data.products ausente ou não é uma lista).`);
+  }
   return page;
 }
 

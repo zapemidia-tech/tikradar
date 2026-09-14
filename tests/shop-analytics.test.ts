@@ -6,6 +6,7 @@ import {
   classifyShopAnalyticsError,
   isVersionUnavailableError,
   collectPaginated,
+  describeSanitizedResponseShape,
   DIAGNOSTIC_MAX_PAGES,
   type AnalyticsPage,
 } from '@/lib/tiktok/shop-analytics';
@@ -180,6 +181,55 @@ describe('parseAnalyticsPage — mesma extração de página em qualquer versão
   it('resposta vazia (sucesso sem dados) tem items=[] e observedFields=[] — nunca lança', () => {
     const page = parseAnalyticsPage({ code: 0, data: { videos: [], total_count: 0, next_page_token: '', latest_available_date: '2026-09-10' } }, 'videos');
     expect(page).toEqual({ items: [], observedFields: [], totalCount: 0, nextPageToken: null, latestAvailableDate: '2026-09-10' });
+  });
+});
+
+describe('describeSanitizedResponseShape — só chaves/tipos, nunca valores de negócio', () => {
+  it('resposta de erro da TikTok: code/message/request_id capturados, dataKeys null (data nem veio)', () => {
+    const shape = describeSanitizedResponseShape({ code: 105005, message: 'Access denied. The app is not authorized...', request_id: 'req1' }, 'videos');
+    expect(shape).toEqual({
+      code: 105005,
+      message: 'Access denied. The app is not authorized...',
+      hasRequestId: true,
+      rootKeys: ['code', 'message', 'request_id'],
+      dataKeys: null,
+      arrayKey: 'videos',
+      arrayValueShape: 'undefined',
+    });
+  });
+
+  it('sucesso mas data:null (estrutura sanitizada que motivou este diagnóstico) — dataKeys null, nunca confundido com erro', () => {
+    const shape = describeSanitizedResponseShape({ code: 0, message: 'Success', request_id: 'req2', data: null }, 'products');
+    expect(shape).toMatchObject({ code: 0, dataKeys: null, arrayKey: 'products', arrayValueShape: 'undefined' });
+  });
+
+  it('sucesso, data é objeto mas sem a chave videos/products — dataKeys lista os campos que vieram de fato', () => {
+    const shape = describeSanitizedResponseShape({ code: 0, data: { total_count: 0, latest_available_date: '2026-09-10' } }, 'videos');
+    expect(shape.dataKeys).toEqual(['total_count', 'latest_available_date']);
+    expect(shape.arrayValueShape).toBe('undefined');
+  });
+
+  it('videos/products vem com o tipo errado (ex.: objeto em vez de lista) — arrayValueShape reporta o tipo real, nunca o valor', () => {
+    const shape = describeSanitizedResponseShape({ code: 0, data: { videos: { not: 'a list' } } }, 'videos');
+    expect(shape.arrayValueShape).toBe('object');
+  });
+
+  it('sucesso sem registros de verdade (lista vazia documentada) — arrayValueShape diferencia de "ausente"', () => {
+    const shape = describeSanitizedResponseShape({ code: 0, data: { videos: [] } }, 'videos');
+    expect(shape.arrayValueShape).toBe('array(0)');
+  });
+
+  it('nunca inclui o valor de campos sensíveis, mesmo que apareçam no payload por engano — só nomes de chave', () => {
+    const raw = {
+      code: 0,
+      data: { access_token: 'SEGREDO-NAO-PODE-VAZAR', app_secret: 'OUTRO-SEGREDO', shop_cipher: 'CIPHER-COMPLETO-SECRETO' },
+    };
+    const shape = describeSanitizedResponseShape(raw, 'videos');
+    const serialized = JSON.stringify(shape);
+    expect(serialized).not.toContain('SEGREDO-NAO-PODE-VAZAR');
+    expect(serialized).not.toContain('OUTRO-SEGREDO');
+    expect(serialized).not.toContain('CIPHER-COMPLETO-SECRETO');
+    expect(shape.dataKeys).toEqual(['access_token', 'app_secret', 'shop_cipher']); // só os NOMES, nunca os valores
   });
 });
 
