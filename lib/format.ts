@@ -8,6 +8,21 @@ export const brl = (n: number | null | undefined) =>
     ? NA
     : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: n > 99999 ? 'compact' : 'standard' }).format(n);
 
+/** Valor monetário com a MOEDA REAL que a fonte devolveu junto (nunca assume BRL) —
+ * usado pelas APIs de Shop Analytics, cuja `currency` pode ser USD ou a moeda local
+ * da loja (LOCAL), conforme o parâmetro pedido. `amount` vem como string da API. */
+export const moneyByCurrency = (value: { amount: string; currency: string } | null | undefined) => {
+  if (!value) return NA;
+  const n = Number(value.amount);
+  if (!Number.isFinite(n)) return NA;
+  try {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: value.currency }).format(n);
+  } catch {
+    // Código de moeda que o Intl não reconhece (nunca deveria acontecer com um código ISO 4217 real) — mostra o valor bruto em vez de quebrar.
+    return `${value.amount} ${value.currency}`;
+  }
+};
+
 export const compact = (n: number | null | undefined) =>
   n === null || n === undefined ? NA : new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 

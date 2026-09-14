@@ -206,10 +206,17 @@ export interface VideoPerformanceSummary {
   version: ShopAnalyticsApiVersion;
   id: string | null;
   title: string | null;
+  /** `username` do topo do item — garantido nas duas versões, mesmo quando `creator` (só 202605) falta. Usar como nome de exibição quando `creator` for `null`. */
+  username: string | null;
   videoPostTime: string | null;
   durationSeconds: number | null;
+  hashTags: string[] | null;
   gmv: { amount: string; currency: string } | null;
   gpm: { amount: string; currency: string } | null;
+  /** Média diária de clientes (documentado) — não confundir com `views`. */
+  avgCustomers: number | null;
+  /** Pedidos SKU pagos originados do vídeo — é o campo mais próximo de "pedidos" que a API de vídeo documenta (não existe `orders` de vídeo). */
+  skuOrders: number | null;
   views: number | null;
   itemsSold: number | null;
   clickThroughRate: string | null;
@@ -220,6 +227,7 @@ export interface VideoPerformanceSummary {
 
 export function toVideoSummary(item: JsonRecord, version: ShopAnalyticsApiVersion): VideoPerformanceSummary {
   const products = item.products;
+  const hashTags = Array.isArray(item.hash_tags) ? item.hash_tags.filter((h): h is string => typeof h === 'string') : null;
   const creatorRaw = version === '202605' ? item.creator : undefined;
   const creator = isRecord(creatorRaw)
     ? { openId: str(creatorRaw.open_id), userName: str(creatorRaw.user_name), nickName: str(creatorRaw.nick_name), authorType: str(creatorRaw.author_type) }
@@ -228,10 +236,14 @@ export function toVideoSummary(item: JsonRecord, version: ShopAnalyticsApiVersio
     version,
     id: idString(item.id),
     title: str(item.title),
+    username: str(item.username),
     videoPostTime: str(item.video_post_time),
     durationSeconds: num(item.duration),
+    hashTags,
     gmv: money(item.gmv),
     gpm: money(item.gpm),
+    avgCustomers: num(item.avg_customers),
+    skuOrders: num(item.sku_orders),
     views: num(item.views),
     itemsSold: num(item.items_sold),
     clickThroughRate: str(item.click_through_rate),
@@ -265,6 +277,11 @@ export interface ProductTotalPerformance {
   addCartRate: string | null;
   clickOrderRate: string | null;
   estimatedCustomers: number | null;
+  /** Valor médio por pedido (SKU) — NUNCA o preço de catálogo do produto (a API não retorna preço aqui). */
+  aov: { amount: string; currency: string } | null;
+  /** Existe pra nunca confundir GMV bruto com resultado líquido — a UI mostra ao lado do GMV, nunca subtraído silenciosamente. */
+  refunds: { amount: string; currency: string } | null;
+  refundedItems: number | null;
 }
 
 const PRODUCT_CHANNEL_KEYS = [
@@ -274,12 +291,94 @@ const PRODUCT_CHANNEL_KEYS = [
   'affiliate_total_performance',
   'affiliate_live_performance',
   'affiliate_video_performance',
-  'shop_tab_performance',
 ] as const;
+export type ProductChannelKey = (typeof PRODUCT_CHANNEL_KEYS)[number];
+
+// O campo de GMV atribuído muda de NOME por canal (documentado) — nunca
+// tratado como o mesmo campo. `attributed_orders`/`attributed_sku_orders`/
+// `attributed_sold_items` só existem nos 4 primeiros canais (a doc não os
+// lista para affiliate_live/affiliate_video) — ficam `null` nos outros dois,
+// nunca inventados.
+const ATTRIBUTED_GMV_FIELD: Record<ProductChannelKey, string> = {
+  seller_live_performance: 'attributed_gmv',
+  seller_video_performance: 'attributed_gmv',
+  seller_product_card_performance: 'attributed_gmv',
+  affiliate_total_performance: 'attributed_gmv',
+  affiliate_live_performance: 'live_attributed_gmv',
+  affiliate_video_performance: 'attributed_video_gmv',
+};
+
+/** Métricas de funil por canal (vídeo próprio, live próprio, product card, afiliados) — só os campos
+ * que a doc oficial confirma existirem em TODOS os 4-6 canais que os têm; os ~15 campos "unique_*"
+ * de cada bloco não são achatados aqui (ver docs/tiktok-shop-analytics-202605.md). */
+export interface ProductChannelPerformance {
+  channel: ProductChannelKey;
+  attributedGmv: { amount: string; currency: string } | null;
+  /** `null` em affiliate_live_performance/affiliate_video_performance — a doc não documenta esse campo pra esses 2 canais. */
+  attributedOrders: number | null;
+  productImpressions: number | null;
+  productClicks: number | null;
+  ctr: string | null;
+  addCartRate: string | null;
+}
+
+/** `shop_tab_performance` tem forma própria (sem conceito de "atribuído") — nunca achatado junto dos outros canais. */
+export interface ShopTabPerformance {
+  productImpressions: number | null;
+  productClicks: number | null;
+  uniqueProductClicks: number | null;
+  estimatedCustomers: number | null;
+  ctr: string | null;
+  gmv: { amount: string; currency: string } | null;
+  itemsSold: number | null;
+}
+
+/** Extrai só os canais REALMENTE presentes no item (202605) — nunca inventa um canal ausente como zero. */
+function toProductChannels(item: JsonRecord): ProductChannelPerformance[] {
+  const channels: ProductChannelPerformance[] = [];
+  for (const key of PRODUCT_CHANNEL_KEYS) {
+    const block = item[key];
+    if (!isRecord(block)) continue;
+    channels.push({
+      channel: key,
+      attributedGmv: money(block[ATTRIBUTED_GMV_FIELD[key]]),
+      attributedOrders: num(block.attributed_orders),
+      productImpressions: num(block.product_impressions),
+      productClicks: num(block.product_clicks),
+      ctr: str(block.ctr),
+      addCartRate: str(block.add_cart_rate),
+    });
+  }
+  return channels;
+}
+
+function toShopTabPerformance(item: JsonRecord): ShopTabPerformance | null {
+  const block = item.shop_tab_performance;
+  if (!isRecord(block)) return null;
+  return {
+    productImpressions: num(block.shop_tab_product_impressions),
+    productClicks: num(block.shop_tab_product_clicks),
+    uniqueProductClicks: num(block.unique_shop_tab_product_clicks),
+    estimatedCustomers: num(block.estimated_shop_tab_customers),
+    ctr: str(block.shop_tab_ctr),
+    gmv: money(block.shop_tab_gmv),
+    itemsSold: num(block.shop_tab_sold_items),
+  };
+}
 
 export type ProductPerformanceSummary =
   | { version: '202509'; id: string | null; overallPerformance: ProductOverallPerformance | null }
-  | { version: '202605'; id: string | null; totalPerformance: ProductTotalPerformance | null; channelsWithData: string[] };
+  | {
+      version: '202605';
+      id: string | null;
+      totalPerformance: ProductTotalPerformance | null;
+      /** Nomes dos blocos de canal presentes (inclui `shop_tab_performance`) — mantido pro diagnóstico já existente. */
+      channelsWithData: string[];
+      /** Métricas de funil já extraídas dos canais de atribuição (seller/affiliate) realmente presentes — [] se nenhum. */
+      channels: ProductChannelPerformance[];
+      /** `null` se `shop_tab_performance` não veio no item. */
+      shopTab: ShopTabPerformance | null;
+    };
 
 export function toProductSummary(item: JsonRecord, version: ShopAnalyticsApiVersion): ProductPerformanceSummary {
   const id = idString(item.id);
@@ -301,10 +400,13 @@ export function toProductSummary(item: JsonRecord, version: ShopAnalyticsApiVers
         addCartRate: str(tp.add_cart_rate),
         clickOrderRate: str(tp.click_order_rate),
         estimatedCustomers: num(tp.estimated_customers),
+        aov: money(tp.aov),
+        refunds: money(tp.refunds),
+        refundedItems: num(tp.refunded_items),
       }
     : null;
-  const channelsWithData = PRODUCT_CHANNEL_KEYS.filter((k) => isRecord(item[k]));
-  return { version, id, totalPerformance, channelsWithData };
+  const channelsWithData = [...PRODUCT_CHANNEL_KEYS, 'shop_tab_performance' as const].filter((k) => isRecord(item[k]));
+  return { version, id, totalPerformance, channelsWithData, channels: toProductChannels(item), shopTab: toShopTabPerformance(item) };
 }
 
 // --- Classificação de erro -------------------------------------------------
@@ -378,6 +480,15 @@ export function isVersionUnavailableError(error: unknown): boolean {
 // do escopo desta etapa) — só o suficiente pra confirmar que a paginação
 // funciona e dar uma amostra real.
 export const DIAGNOSTIC_MAX_PAGES = 3;
+
+// Limite independente do diagnóstico: o painel "Minha loja" (app/minha-loja)
+// busca no máximo isso de páginas por endpoint pra renderizar a 1ª tela —
+// nunca vira uma varredura completa do catálogo (page_size máx. documentado
+// é 100, então 5 páginas = até 500 itens por endpoint, o bastante pra uma
+// visão geral + tabela sem virar sincronização). Separado de
+// DIAGNOSTIC_MAX_PAGES de propósito: mudar o limite de uma feature nunca
+// deve afetar silenciosamente a outra.
+export const SHOP_DASHBOARD_MAX_PAGES = 5;
 
 export interface PaginationResult<T> {
   items: T[];

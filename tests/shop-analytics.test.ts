@@ -315,6 +315,25 @@ describe('toVideoSummary — creator só existe na 202605, nunca inventado na 20
     const summary = toVideoSummary(itemWithStrayCreator, '202509');
     expect(summary.creator).toBeNull();
   });
+
+  it('username, hashTags, avgCustomers e skuOrders (documentados, usados no painel Minha loja) são extraídos nas duas versões', () => {
+    const s509 = toVideoSummary(parseAnalyticsPage(REAL_VIDEO_202509, 'videos')!.items[0], '202509');
+    expect(s509.username).toBe('Video Username');
+    expect(s509.hashTags).toEqual(['#racuntiktok', 'fyp']);
+    expect(s509.avgCustomers).toBe(0);
+    expect(s509.skuOrders).toBe(0);
+
+    const s605 = toVideoSummary(parseAnalyticsPage(REAL_VIDEO_202605, 'videos')!.items[0], '202605');
+    expect(s605.username).toBe('creator_shop_01');
+    expect(s605.hashTags).toEqual(['#racuntiktok', 'fyp']);
+    expect(s605.avgCustomers).toBe(35);
+    expect(s605.skuOrders).toBe(12);
+  });
+
+  it('hashTags fica null (nunca []) quando o campo não vem, e filtra qualquer entrada que não seja string', () => {
+    expect(toVideoSummary({ id: '1' }, '202605').hashTags).toBeNull();
+    expect(toVideoSummary({ id: '1', hash_tags: ['ok', 123, null] }, '202605').hashTags).toEqual(['ok']);
+  });
 });
 
 describe('toProductSummary — 202509 (overall_performance) vs 202605 (total_performance + canais) nunca misturados', () => {
@@ -351,6 +370,43 @@ describe('toProductSummary — 202509 (overall_performance) vs 202605 (total_per
         'shop_tab_performance',
       ]);
     }
+  });
+
+  it('202605: channels extrai o GMV atribuído do NOME DE CAMPO certo por canal (attributed_gmv vs. live_attributed_gmv vs. attributed_video_gmv) — nunca o mesmo campo pra todos', () => {
+    const page = parseAnalyticsPage(REAL_PRODUCT_202605, 'products')!;
+    const summary = toProductSummary(page.items[0], '202605');
+    if (summary.version !== '202605') throw new Error('esperava 202605');
+    expect(summary.channels).toHaveLength(6); // os 6 canais de atribuição — shop_tab_performance é separado (shopTab)
+    const byChannel = Object.fromEntries(summary.channels.map((c) => [c.channel, c]));
+    expect(byChannel.seller_live_performance).toMatchObject({ attributedGmv: { amount: '142.8', currency: 'GBP' }, attributedOrders: 4 });
+    expect(byChannel.affiliate_live_performance).toMatchObject({ attributedGmv: { amount: '121.4', currency: 'GBP' } });
+    expect(byChannel.affiliate_video_performance).toMatchObject({ attributedGmv: { amount: '82.9', currency: 'GBP' } });
+    // attributed_orders não é documentado pra affiliate_live/affiliate_video — nunca inventado como 0.
+    expect(byChannel.affiliate_live_performance.attributedOrders).toBeNull();
+    expect(byChannel.affiliate_video_performance.attributedOrders).toBeNull();
+  });
+
+  it('202605: shopTab extrai a forma própria de shop_tab_performance (sem conceito de "atribuído") — null quando ausente', () => {
+    const page = parseAnalyticsPage(REAL_PRODUCT_202605, 'products')!;
+    const summary = toProductSummary(page.items[0], '202605');
+    if (summary.version !== '202605') throw new Error('esperava 202605');
+    expect(summary.shopTab).toMatchObject({ productImpressions: 2520, gmv: { amount: '128.4', currency: 'GBP' } });
+
+    const noShopTab = toProductSummary({ id: '1', total_performance: { gmv: { amount: '1', currency: 'USD' } } }, '202605');
+    if (noShopTab.version !== '202605') throw new Error('esperava 202605');
+    expect(noShopTab.shopTab).toBeNull();
+    expect(noShopTab.channels).toEqual([]);
+  });
+
+  it('202605: total_performance ganha aov/refunds/refundedItems (campos documentados, antes não extraídos)', () => {
+    const page = parseAnalyticsPage(REAL_PRODUCT_202605, 'products')!;
+    const summary = toProductSummary(page.items[0], '202605');
+    if (summary.version !== '202605') throw new Error('esperava 202605');
+    expect(summary.totalPerformance).toMatchObject({
+      aov: { amount: '32.92', currency: 'GBP' },
+      refunds: { amount: '24.99', currency: 'GBP' },
+      refundedItems: 1,
+    });
   });
 
   it('id normalizado pra string nas duas versões (documentado como string em ambas)', () => {

@@ -56,7 +56,7 @@ export function computeReferenceDate(now: Date, timeZone: string, daysAgo: numbe
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-function isValidIsoDate(value: string): boolean {
+export function isValidIsoDate(value: string): boolean {
   if (!ISO_DATE.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
