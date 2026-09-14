@@ -11,7 +11,7 @@ import {
   type AnalyticsPage,
 } from '@/lib/tiktok/shop-analytics';
 import { defaultAnalyticsWindow } from '@/lib/tiktok/shop-analytics-window';
-import { TikTokApiError } from '@/lib/tiktok/errors';
+import { TikTokApiError, TikTokSchemaError } from '@/lib/tiktok/errors';
 
 // Exemplos REAIS de resposta, baixados via "Download Markdown" (texto
 // completo, sem o corte que o editor de código renderizado em JS causa) das
@@ -331,6 +331,22 @@ describe('classifyShopAnalyticsError — só os 3 códigos confirmados na doc of
     expect(classifyShopAnalyticsError(error)).toMatchObject({ kind: 'api_error', code: 36009003 });
     expect(classifyShopAnalyticsError(new Error('rede caiu'))).toMatchObject({ kind: 'api_error' });
     expect(classifyShopAnalyticsError('nem é Error')).toMatchObject({ kind: 'api_error', message: 'Erro desconhecido.' });
+  });
+
+  it('TikTokSchemaError (sucesso da TikTok, mas data.videos/products em formato inesperado) vira "unexpected_format" — NUNCA "api_error" (não pode ser confundido com erro de negócio real da TikTok)', () => {
+    const shape = describeSanitizedResponseShape({ code: 0, message: 'Success', request_id: 'req5', data: null }, 'videos');
+    const error = new TikTokSchemaError('Resposta de Shop Video Performance (202605) em formato inesperado (data.videos ausente ou não é uma lista).', { shape });
+    expect(classifyShopAnalyticsError(error)).toEqual({
+      kind: 'unexpected_format',
+      code: undefined,
+      status: undefined,
+      message: 'Resposta de Shop Video Performance (202605) em formato inesperado (data.videos ausente ou não é uma lista).',
+      shape,
+    });
+  });
+
+  it('TikTokSchemaError sem details (uso genérico) não quebra — shape fica undefined', () => {
+    expect(classifyShopAnalyticsError(new TikTokSchemaError('formato inesperado'))).toMatchObject({ kind: 'unexpected_format', shape: undefined });
   });
 });
 

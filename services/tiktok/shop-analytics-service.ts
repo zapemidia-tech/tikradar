@@ -51,12 +51,16 @@ function assertNoApiErrorCode(raw: unknown): void {
 }
 
 /** Loga só metadados sanitizados (nunca o payload) quando a lista esperada não
- * vem no formato documentado — para diagnosticar em produção sem nunca expor
- * token, App Secret, shop_cipher completo ou dado de negócio. Ver
+ * vem no formato documentado, E devolve esse mesmo objeto pra ser anexado ao
+ * erro lançado (`TikTokSchemaError.details`) — assim o diagnóstico consegue
+ * mostrar a causa na própria tela, sem depender de acesso a log de servidor
+ * (que nem sempre está disponível pra quem está investigando). Ver
  * `describeSanitizedResponseShape` (lib/tiktok/shop-analytics.ts) para a lista
- * exata do que é logado. */
-function logUnexpectedFormat(endpoint: string, version: ShopAnalyticsApiVersion, raw: unknown, arrayKey: 'videos' | 'products'): void {
-  console.error(`[shop-analytics] formato inesperado em ${endpoint} (${version})`, describeSanitizedResponseShape(raw, arrayKey));
+ * exata do que é capturado. */
+function logUnexpectedFormat(endpoint: string, version: ShopAnalyticsApiVersion, raw: unknown, arrayKey: 'videos' | 'products') {
+  const shape = describeSanitizedResponseShape(raw, arrayKey);
+  console.error(`[shop-analytics] formato inesperado em ${endpoint} (${version})`, shape);
+  return shape;
 }
 
 /** GET /analytics/<version>/shop_videos/performance — 1 página, versão explícita (sem fallback). */
@@ -65,8 +69,8 @@ export async function getShopVideoPerformancePage(client: TikTokShopClient, para
   assertNoApiErrorCode(raw);
   const page = parseAnalyticsPage(raw, 'videos');
   if (!page) {
-    logUnexpectedFormat('shop_videos/performance', version, raw, 'videos');
-    throw new TikTokSchemaError(`Resposta de Shop Video Performance (${version}) em formato inesperado (data.videos ausente ou não é uma lista).`);
+    const shape = logUnexpectedFormat('shop_videos/performance', version, raw, 'videos');
+    throw new TikTokSchemaError(`Resposta de Shop Video Performance (${version}) em formato inesperado (data.videos ausente ou não é uma lista).`, { shape });
   }
   return page;
 }
@@ -77,8 +81,8 @@ export async function getShopProductPerformancePage(client: TikTokShopClient, pa
   assertNoApiErrorCode(raw);
   const page = parseAnalyticsPage(raw, 'products');
   if (!page) {
-    logUnexpectedFormat('shop_products/performance', version, raw, 'products');
-    throw new TikTokSchemaError(`Resposta de Shop Product Performance (${version}) em formato inesperado (data.products ausente ou não é uma lista).`);
+    const shape = logUnexpectedFormat('shop_products/performance', version, raw, 'products');
+    throw new TikTokSchemaError(`Resposta de Shop Product Performance (${version}) em formato inesperado (data.products ausente ou não é uma lista).`, { shape });
   }
   return page;
 }

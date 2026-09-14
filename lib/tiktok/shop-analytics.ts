@@ -285,17 +285,32 @@ const INVALID_PERIOD_CODE = 28001022; // "invalid request params; detail: start 
 const INVALID_PATH_CODE = 36009009; // "Invalid path. The specified path does not match any available endpoint."
 const INVALID_VERSION_CODES = [36009014, 36009004]; // "Invalid API version..." — 36009004 é reaproveitado p/ várias mensagens, só conta combinado com a mensagem
 
-export type ShopAnalyticsErrorKind = 'insufficient_permission' | 'token_expired' | 'invalid_period' | 'api_error';
+// 'unexpected_format' é DIFERENTE de 'api_error': a TikTok respondeu sucesso
+// (HTTP ok + code 0), só que data.videos/data.products não veio no formato
+// documentado — nunca deve ser confundido com um erro de negócio real da
+// TikTok (esses têm code e caem nas outras categorias, ou em 'api_error' se
+// o code não bater com nenhum dos 3 confirmados).
+export type ShopAnalyticsErrorKind = 'insufficient_permission' | 'token_expired' | 'invalid_period' | 'unexpected_format' | 'api_error';
 
 export interface ClassifiedShopAnalyticsError {
   kind: ShopAnalyticsErrorKind;
   code?: number;
   status?: number;
   message: string;
+  /** Só presente quando kind==='unexpected_format' — metadados sanitizados (nunca o payload) da resposta que não bateu com o formato documentado. */
+  shape?: SanitizedResponseShape;
 }
 
-/** Classifica um erro já lançado por TikTokShopClient.request (TikTokApiError/TikTokRateLimitError)
- * ou qualquer outro erro inesperado — nunca finge saber o motivo além do que os 3 códigos confirmados cobrem. */
+function asSanitizedResponseShape(value: unknown): SanitizedResponseShape | undefined {
+  if (!isRecord(value)) return undefined;
+  if (typeof value.arrayKey !== 'string' || typeof value.arrayValueShape !== 'string') return undefined;
+  return value as unknown as SanitizedResponseShape;
+}
+
+/** Classifica um erro já lançado por TikTokShopClient.request (TikTokApiError/TikTokRateLimitError),
+ * por TikTokSchemaError (formato inesperado — ver getShopVideoPerformancePage/getShopProductPerformancePage
+ * em shop-analytics-service.ts) ou qualquer outro erro inesperado — nunca finge saber o motivo além do
+ * que está confirmado. */
 export function classifyShopAnalyticsError(error: unknown): ClassifiedShopAnalyticsError {
   const code = isRecord(error) && typeof error.code === 'number' ? error.code : undefined;
   const status = isRecord(error) && typeof error.status === 'number' ? error.status : undefined;
@@ -303,6 +318,11 @@ export function classifyShopAnalyticsError(error: unknown): ClassifiedShopAnalyt
   if (code === PERMISSION_DENIED_CODE) return { kind: 'insufficient_permission', code, status, message };
   if (code === TOKEN_EXPIRED_CODE) return { kind: 'token_expired', code, status, message };
   if (code === INVALID_PERIOD_CODE) return { kind: 'invalid_period', code, status, message };
+  if (isRecord(error) && error.name === 'TikTokSchemaError') {
+    const details = isRecord(error) ? error.details : undefined;
+    const shape = asSanitizedResponseShape(isRecord(details) ? details.shape : undefined);
+    return { kind: 'unexpected_format', code, status, message, shape };
+  }
   return { kind: 'api_error', code, status, message };
 }
 

@@ -3,7 +3,22 @@
 import { useState } from 'react';
 
 type ConnectionState = 'not_connected' | 'token_expired';
-type ApiFailure = 'insufficient_permission' | 'invalid_period' | 'api_error';
+// 'unexpected_format' é distinto de 'api_error': a TikTok respondeu sucesso
+// (HTTP ok + code 0), só que data.videos/data.products não veio no formato
+// documentado — nunca é mostrado como se fosse um erro de negócio real.
+type ApiFailure = 'insufficient_permission' | 'invalid_period' | 'unexpected_format' | 'api_error';
+
+// Só nomes de chave e tipos — nunca valores de negócio (ver
+// describeSanitizedResponseShape em lib/tiktok/shop-analytics.ts).
+interface SanitizedResponseShape {
+  code: number | null;
+  message: string | null;
+  hasRequestId: boolean;
+  rootKeys: string[];
+  dataKeys: string[] | null;
+  arrayKey: 'videos' | 'products';
+  arrayValueShape: string;
+}
 
 interface SuccessDiagnostic {
   outcome: 'success_with_data' | 'success_empty';
@@ -17,7 +32,7 @@ interface SuccessDiagnostic {
   observedFields: string[];
   sample: unknown[];
 }
-type EndpointDiagnostic = { outcome: ConnectionState } | ({ outcome: ApiFailure } & { code?: number; status?: number; message: string }) | SuccessDiagnostic;
+type EndpointDiagnostic = { outcome: ConnectionState } | ({ outcome: ApiFailure } & { code?: number; status?: number; message: string; shape?: SanitizedResponseShape }) | SuccessDiagnostic;
 
 interface DiagnosticResponse {
   connection: { status: 'ready' | ConnectionState; sellerName?: string; sellerBaseRegion?: string };
@@ -31,6 +46,7 @@ const OUTCOME_LABEL: Record<string, string> = {
   token_expired: 'Token expirado — reconecte',
   insufficient_permission: 'Permissão insuficiente',
   invalid_period: 'Período inválido',
+  unexpected_format: 'A TikTok respondeu sucesso, mas em formato inesperado',
   api_error: 'Erro da API',
   success_with_data: 'Sucesso — com dados',
   success_empty: 'Sucesso — sem dados no período',
@@ -39,8 +55,8 @@ const OUTCOME_LABEL: Record<string, string> = {
 function isSuccess(d: EndpointDiagnostic): d is SuccessDiagnostic {
   return d.outcome === 'success_with_data' || d.outcome === 'success_empty';
 }
-function isApiFailure(d: EndpointDiagnostic): d is { outcome: ApiFailure; code?: number; status?: number; message: string } {
-  return d.outcome === 'insufficient_permission' || d.outcome === 'invalid_period' || d.outcome === 'api_error';
+function isApiFailure(d: EndpointDiagnostic): d is { outcome: ApiFailure; code?: number; status?: number; message: string; shape?: SanitizedResponseShape } {
+  return d.outcome === 'insufficient_permission' || d.outcome === 'invalid_period' || d.outcome === 'unexpected_format' || d.outcome === 'api_error';
 }
 
 function EndpointResult({ title, diagnostic }: { title: string; diagnostic: EndpointDiagnostic }) {
@@ -55,10 +71,22 @@ function EndpointResult({ title, diagnostic }: { title: string; diagnostic: Endp
       </div>
 
       {isApiFailure(diagnostic) && (
-        <p className="auth-message is-error" role="alert">
-          {diagnostic.message}
-          {diagnostic.code !== undefined && ` (código ${diagnostic.code})`}
-        </p>
+        <>
+          <p className="auth-message is-error" role="alert">
+            {diagnostic.message}
+            {diagnostic.code !== undefined && ` (código ${diagnostic.code})`}
+          </p>
+          {diagnostic.shape && (
+            <>
+              <p style={{ fontSize: 11, color: 'var(--muted)', margin: '10px 0 6px' }}>
+                Metadados sanitizados da resposta (só nomes de chave e tipos — nunca valores, token, secret ou shop_cipher):
+              </p>
+              <pre style={{ fontSize: 11, overflowX: 'auto', background: 'var(--surface)', padding: 10, borderRadius: 'var(--radius-sm)' }}>
+                {JSON.stringify(diagnostic.shape, null, 2)}
+              </pre>
+            </>
+          )}
+        </>
       )}
 
       {isSuccess(diagnostic) && (
@@ -164,6 +192,14 @@ export function ShopAnalyticsDiagnostic() {
             <span>Loja usada neste diagnóstico</span>
             <strong>{result.connection.status === 'ready' ? (result.connection.sellerName ?? 'Não informado') : OUTCOME_LABEL[result.connection.status]}</strong>
           </div>
+          {result.queriedWindow && (
+            <div className="config-row">
+              <span>Período consultado (ambos os endpoints)</span>
+              <strong>
+                {result.queriedWindow.startDateGe} até {result.queriedWindow.endDateLt} (exclusivo) — page_size=100
+              </strong>
+            </div>
+          )}
           <EndpointResult title="Get Shop Video Performance List" diagnostic={result.video} />
           <EndpointResult title="Get Shop Product Performance List" diagnostic={result.product} />
         </div>

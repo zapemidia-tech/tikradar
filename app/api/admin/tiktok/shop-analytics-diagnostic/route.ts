@@ -8,7 +8,14 @@ import {
   getShopProductPerformancePage,
   getShopVideoPerformancePage,
 } from '@/services/tiktok/shop-analytics-service';
-import { classifyShopAnalyticsError, collectPaginated, toProductSummary, toVideoSummary, type ShopAnalyticsApiVersion } from '@/lib/tiktok/shop-analytics';
+import {
+  classifyShopAnalyticsError,
+  collectPaginated,
+  toProductSummary,
+  toVideoSummary,
+  type SanitizedResponseShape,
+  type ShopAnalyticsApiVersion,
+} from '@/lib/tiktok/shop-analytics';
 import { defaultAnalyticsWindow, type AnalyticsWindow } from '@/lib/tiktok/shop-analytics-window';
 import { timeZoneForRegion } from '@/lib/tiktok/reference-date';
 import { describeUnknownError } from '@/lib/tiktok/errors';
@@ -29,11 +36,23 @@ export const dynamic = 'force-dynamic';
 // `version` no resultado sempre mostra qual delas respondeu de fato.
 
 type ConnectionState = 'not_connected' | 'token_expired';
-type ApiFailure = 'insufficient_permission' | 'invalid_period' | 'api_error';
+// 'unexpected_format' é um outcome DISTINTO de 'api_error': a própria TikTok
+// respondeu sucesso (HTTP ok + code 0), só que data.videos/data.products não
+// veio no formato documentado — nunca é rotulado como se fosse um erro de
+// negócio da TikTok (esses têm code e caem em 'insufficient_permission' /
+// 'invalid_period' / 'api_error', vindos de classifyShopAnalyticsError).
+type ApiFailure = 'insufficient_permission' | 'invalid_period' | 'unexpected_format' | 'api_error';
 
 type EndpointDiagnostic =
   | { outcome: ConnectionState }
-  | ({ outcome: ApiFailure } & { code?: number; status?: number; message: string })
+  | ({ outcome: ApiFailure } & {
+      code?: number;
+      status?: number;
+      message: string;
+      // Só presente quando outcome==='unexpected_format' — metadados sanitizados
+      // (nunca o payload) da resposta que não bateu com o formato documentado.
+      shape?: SanitizedResponseShape;
+    })
   | {
       outcome: 'success_with_data' | 'success_empty';
       version: ShopAnalyticsApiVersion;
@@ -72,7 +91,7 @@ async function diagnoseVideoEndpoint(client: TikTokShopClient, window: Analytics
     };
   } catch (error) {
     const c = classifyShopAnalyticsError(error);
-    return { outcome: c.kind, code: c.code, status: c.status, message: c.message };
+    return { outcome: c.kind, code: c.code, status: c.status, message: c.message, shape: c.shape };
   }
 }
 
@@ -100,7 +119,7 @@ async function diagnoseProductEndpoint(client: TikTokShopClient, window: Analyti
     };
   } catch (error) {
     const c = classifyShopAnalyticsError(error);
-    return { outcome: c.kind, code: c.code, status: c.status, message: c.message };
+    return { outcome: c.kind, code: c.code, status: c.status, message: c.message, shape: c.shape };
   }
 }
 
