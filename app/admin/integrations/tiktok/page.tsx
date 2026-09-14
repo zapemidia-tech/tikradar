@@ -3,7 +3,7 @@ import { getTikTokConfig } from '@/lib/tiktok/config';
 import { SupabaseTikTokTokenStore } from '@/lib/tiktok/token-store';
 import { requireSessionUser } from '@/lib/auth/session';
 import { createClient } from '@supabase/supabase-js';
-import { ShieldCheck, KeyRound, Database, Zap, Store } from 'lucide-react';
+import { ShieldCheck, KeyRound, Database, Zap, Store, FlaskConical } from 'lucide-react';
 import { TikTokSyncButton } from '@/components/tiktok-sync-button';
 import { DisconnectOwnShopButton } from '@/components/own-shop-connection-actions';
 import { hasShopAnalyticsScope, resolveOwnShopState, SHOP_ANALYTICS_SCOPE } from '@/lib/tiktok/connection-purpose';
@@ -171,6 +171,10 @@ export default async function TikTokIntegrationPage({
                   <span>Última autorização</span>
                   <strong>{ownShopConnection.updated_at ? new Date(ownShopConnection.updated_at).toLocaleString('pt-BR') : 'Não informado'}</strong>
                 </div>
+                <a className="integration-test-link" href="/admin/integrations/tiktok/shop-analytics-diagnostic">
+                  <FlaskConical size={15} />
+                  Testar dados da minha loja
+                </a>
               </>
             )}
 

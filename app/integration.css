@@ -44,6 +44,32 @@
   color: var(--positive);
 }
 
+/* Botão secundário claro (não é a ação primária teal de conectar/reconectar,
+   mas precisa ficar óbvio que é clicável — ver .integration-card "Minha loja"). */
+.integration-test-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 16px;
+  margin: 6px 0 2px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--ink);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.integration-test-link:hover {
+  background: var(--surface-hover);
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
 .integration-empty {
   text-align: center;
   padding: 40px 10px 24px;
