@@ -1,0 +1,35 @@
+-- 012_data_sync_runs_status_index.sql
+--
+-- app/api/data-source/status/route.ts (chamada pelo AppShell em TODA página
+-- autenticada, no mount) roda:
+--
+--   select finished_at,status,... from data_sync_runs
+--   where status = 'success'
+--   order by started_at desc
+--   limit 1
+--
+-- O único índice existente em data_sync_runs é `data_sync_runs_started_idx
+-- (started_at desc)` (migration 002) — sem nada em `status`. Pra essa
+-- consulta, o Postgres só consegue usar esse índice pra percorrer as linhas
+-- em ordem decrescente de started_at, checando `status='success'` uma a uma
+-- até achar a 1ª que bate — ou seja, quanto mais execuções 'running'/'failed'
+-- (nunca finalizadas com sucesso, ou que ficaram travadas em 'running' por
+-- uma função serverless que caiu no meio) tiverem started_at mais recente
+-- que a última 'success', mais linhas precisa varrer antes de achar o
+-- resultado. Confirmado em produção em 2026-09-28: essa rota levando
+-- consistentemente 7-8s (medido via curl, 3 chamadas seguidas, todas
+-- igualmente lentas — não é cold start), enquanto outras rotas que também
+-- consultam data_sync_runs mas SEM filtrar por status (ex.: a leitura de
+-- "última sincronização" em app/admin/integrations/tiktok/page.tsx, que só
+-- ordena por started_at sem where) continuam rápidas.
+--
+-- Índice composto (status, started_at desc): a igualdade em `status` vem
+-- primeiro (casa com `WHERE status = 'success'`), permitindo ao Postgres
+-- pular direto pro grupo de linhas 'success' já ordenado por started_at —
+-- sem depender de quantas linhas não-'success' vieram depois na timeline.
+--
+-- Puramente aditivo: só cria um índice, não muda dado nenhum.
+-- Idempotente: pode ser reexecutada sem efeito colateral.
+
+create index if not exists data_sync_runs_status_started_idx
+  on public.data_sync_runs(status, started_at desc);
