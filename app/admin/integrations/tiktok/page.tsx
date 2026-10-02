@@ -1,13 +1,23 @@
 import { AppShell, PageTitle } from '@/components/app-shell';
 import { getTikTokConfig } from '@/lib/tiktok/config';
+import { isTikTokCreatorAppConfigured } from '@/lib/tiktok/creator-config';
 import { SupabaseTikTokTokenStore } from '@/lib/tiktok/token-store';
 import { requireSessionUser } from '@/lib/auth/session';
 import { createClient } from '@supabase/supabase-js';
-import { ShieldCheck, KeyRound, Database, Zap, Store, FlaskConical } from 'lucide-react';
+import { ShieldCheck, KeyRound, Database, Zap, Store, FlaskConical, UserCheck } from 'lucide-react';
 import { TikTokSyncButton } from '@/components/tiktok-sync-button';
 import { DisconnectOwnShopButton } from '@/components/own-shop-connection-actions';
-import { hasShopAnalyticsScope, resolveOwnShopState, SHOP_ANALYTICS_SCOPE } from '@/lib/tiktok/connection-purpose';
+import { DisconnectAffiliateCreatorButton } from '@/components/affiliate-connection-actions';
+import {
+  AFFILIATE_CREATOR_SCOPES,
+  grantedAffiliateCreatorScopes,
+  hasShopAnalyticsScope,
+  resolveAffiliateCreatorState,
+  resolveOwnShopState,
+  SHOP_ANALYTICS_SCOPE,
+} from '@/lib/tiktok/connection-purpose';
 import { ownShopOAuthErrorMessage } from '@/lib/tiktok/oauth-messages';
+import { affiliateCreatorOAuthErrorMessage } from '@/lib/tiktok/creator-oauth-messages';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,15 +33,21 @@ export default async function TikTokIntegrationPage({
   searchParams: Promise<{ purpose?: string; connected?: string; error?: string }>;
 }) {
   const c = getTikTokConfig();
+  const creatorAppConfigured = isTikTokCreatorAppConfigured();
   const user = await requireSessionUser('/admin/integrations/tiktok');
   const sp = await searchParams;
 
   const store = new SupabaseTikTokTokenStore();
   let bestsellersConnection: Awaited<ReturnType<SupabaseTikTokTokenStore['status']>> = null;
   let ownShopConnection: Awaited<ReturnType<SupabaseTikTokTokenStore['status']>> = null;
+  let affiliateCreatorConnection: Awaited<ReturnType<SupabaseTikTokTokenStore['status']>> = null;
   let lastSync: null | { status: string; finished_at: string | null; error_message: string | null } = null;
   try {
-    [bestsellersConnection, ownShopConnection] = await Promise.all([store.status(user.userId, 'bestsellers_sync'), store.status(user.userId, 'own_shop')]);
+    [bestsellersConnection, ownShopConnection, affiliateCreatorConnection] = await Promise.all([
+      store.status(user.userId, 'bestsellers_sync'),
+      store.status(user.userId, 'own_shop'),
+      store.status(user.userId, 'affiliate_creator'),
+    ]);
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (url && key) {
@@ -59,11 +75,24 @@ export default async function TikTokIntegrationPage({
   // --- Painel 2: Minha loja (nova) ----------------------------------------
   const ownShopState = resolveOwnShopState(ownShopConnection);
   const ownShopScopeOk = hasShopAnalyticsScope(ownShopConnection?.granted_scopes);
-  const purpose = sp.purpose === 'own_shop' ? 'own_shop' : sp.purpose === 'bestsellers_sync' ? 'bestsellers_sync' : null;
+  const purpose = sp.purpose === 'own_shop' ? 'own_shop' : sp.purpose === 'bestsellers_sync' ? 'bestsellers_sync' : sp.purpose === 'affiliate_creator' ? 'affiliate_creator' : null;
   const showOwnShopSuccess = purpose === 'own_shop' && sp.connected === '1';
   const showOwnShopError = purpose === 'own_shop' && Boolean(sp.error);
 
   const ownShopStatusLabel: Record<typeof ownShopState, string> = {
+    not_connected: 'Não conectada',
+    expired: 'Sessão expirada — reconecte',
+    permission_pending: 'Autorizada — permissão ainda não confirmada',
+    ready: 'Conectada e confirmada',
+  };
+
+  // --- Painel 3: Minha conta de afiliado (nova) ---------------------------
+  const affiliateState = resolveAffiliateCreatorState(affiliateCreatorConnection);
+  const affiliateScopes = grantedAffiliateCreatorScopes(affiliateCreatorConnection?.granted_scopes);
+  const showAffiliateSuccess = purpose === 'affiliate_creator' && sp.connected === '1';
+  const showAffiliateError = purpose === 'affiliate_creator' && Boolean(sp.error);
+
+  const affiliateStatusLabel: Record<typeof affiliateState, string> = {
     not_connected: 'Não conectada',
     expired: 'Sessão expirada — reconecte',
     permission_pending: 'Autorizada — permissão ainda não confirmada',
@@ -188,6 +217,87 @@ export default async function TikTokIntegrationPage({
               (é o que já acontece com a conexão do Bestsellers acima, autorizada contra uma loja cujo nome começa com &quot;SANDBOX_&quot;). Conectar uma loja
               real de vendas exige que o app seja revisado/publicado pela TikTok, ou que essa loja real seja adicionada como testadora no Partner Center —
               não prometemos aqui uma conexão com uma loja real antes disso.
+            </p>
+          </article>
+
+          <article className="panel integration-card">
+            <div className="panel-head">
+              <div>
+                <h2>Minha conta de afiliado TikTok Shop</h2>
+                <p>Autorize sua própria conta de criador afiliado — app separado (&quot;TikRadar 02&quot;), credenciais próprias, nunca as do app seller.</p>
+              </div>
+              <UserCheck />
+            </div>
+
+            {!creatorAppConfigured && (
+              <p className="auth-message is-error" role="alert">
+                TIKTOK_CREATOR_APP_KEY/TIKTOK_CREATOR_APP_SECRET não configurados no servidor — conectar está desabilitado até isso ser definido.
+              </p>
+            )}
+
+            {showAffiliateSuccess && (
+              <p className="auth-message is-success" role="status">
+                Autorização concluída.{' '}
+                {affiliateState === 'ready'
+                  ? 'Conta de afiliado confirmada e com os 3 escopos de análise já concedidos.'
+                  : affiliateState === 'permission_pending'
+                    ? 'Conta confirmada, mas nem todos os 3 escopos esperados foram concedidos — permissão ainda não confirmada.'
+                    : ''}
+              </p>
+            )}
+            {showAffiliateError && (
+              <p className="auth-message is-error" role="alert">
+                {affiliateCreatorOAuthErrorMessage(sp.error)}
+              </p>
+            )}
+
+            <div className="config-row">
+              <span>Status</span>
+              <strong className={affiliateState === 'ready' ? 'ok' : ''}>{affiliateStatusLabel[affiliateState]}</strong>
+            </div>
+            {affiliateCreatorConnection && (
+              <>
+                <div className="config-row">
+                  <span>Criador identificado</span>
+                  <strong>{affiliateCreatorConnection.seller_name ?? 'Não informado pela API'}</strong>
+                </div>
+                <div className="config-row">
+                  <span>Região</span>
+                  <strong>{affiliateCreatorConnection.seller_base_region ?? 'Não informado'}</strong>
+                </div>
+                <div className="config-row">
+                  <span>Identificador (open_id)</span>
+                  <strong>{maskTail(affiliateCreatorConnection.open_id)}</strong>
+                </div>
+                {AFFILIATE_CREATOR_SCOPES.map((scope) => (
+                  <div className="config-row" key={scope}>
+                    <span>
+                      Permissão &quot;{scope}&quot;
+                    </span>
+                    <strong className={affiliateScopes[scope] ? 'ok' : ''}>{affiliateScopes[scope] ? 'Confirmada' : 'Ainda não confirmada'}</strong>
+                  </div>
+                ))}
+                <div className="config-row">
+                  <span>Última autorização</span>
+                  <strong>{affiliateCreatorConnection.updated_at ? new Date(affiliateCreatorConnection.updated_at).toLocaleString('pt-BR') : 'Não informado'}</strong>
+                </div>
+                <a className="integration-test-link" href="/admin/integrations/tiktok/affiliate-diagnostic">
+                  <FlaskConical size={15} />
+                  Testar dados da minha conta de afiliado
+                </a>
+              </>
+            )}
+
+            <div className="integration-empty">
+              {creatorAppConfigured && (
+                <a href="/api/tiktok/creator/oauth/authorize">{affiliateCreatorConnection ? 'Reconectar conta de afiliado' : 'Conectar conta de afiliado'}</a>
+              )}
+              {affiliateCreatorConnection && <DisconnectAffiliateCreatorButton />}
+            </div>
+
+            <p className="nir-note">
+              Categoria do app: Serviço personalizado → Engajamento do cliente → Colaborações do criador (mercado BR). A autorização só funciona com uma
+              conta de criador afiliado real da TikTok Shop — nunca com a mesma conta de vendedor usada em &quot;Minha loja&quot;.
             </p>
           </article>
         </div>
