@@ -10,8 +10,10 @@ import { describeUnknownError } from '@/lib/tiktok/errors';
 // `tiktok_oauth_state` do seller), credenciais do app de criador
 // (TIKTOK_CREATOR_APP_KEY/SECRET, ver lib/tiktok/creator-config.ts). Nunca
 // aceita `?purpose=` — sempre e só 'affiliate_creator'.
+const NO_STORE = { 'cache-control': 'private, no-store' };
+
 export async function GET() {
-  if (!(await getSessionUser())) return NextResponse.json({ error: 'Autenticação necessária.' }, { status: 401 });
+  if (!(await getSessionUser())) return NextResponse.json({ error: 'Autenticação necessária.' }, { status: 401, headers: NO_STORE });
 
   const config = getTikTokCreatorConfig(process.env);
   let authorizationUrl: string;
@@ -20,7 +22,7 @@ export async function GET() {
     // falhar (app não configurado), nenhum cookie é setado.
     authorizationUrl = createCreatorAuthorizationUrl(config, createOAuthState());
   } catch (error) {
-    return NextResponse.json({ error: describeUnknownError(error) }, { status: 503 });
+    return NextResponse.json({ error: describeUnknownError(error) }, { status: 503, headers: NO_STORE });
   }
 
   // O `state` usado na URL acima precisa ser o MESMO salvo no cookie — extrai de volta em vez de gerar 2x.
@@ -33,6 +35,6 @@ export async function GET() {
     maxAge: 600,
     path: '/',
   });
-  response.headers.set('cache-control', 'no-store');
+  response.headers.set('cache-control', NO_STORE['cache-control']);
   return response;
 }

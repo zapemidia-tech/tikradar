@@ -193,6 +193,19 @@ describe('aggregateVideoSales — atribuição por vídeo SÓ quando content_typ
     expect(aggregateVideoSales(orders)).toEqual([]);
   });
 
+  it('quantidade ausente em todos os SKUs do vídeo -> unitsSold null (nunca 0)', () => {
+    const orders = [toAffiliateOrder({ id: 'o1', skus: [{ content_type: 'VIDEO', content_id: 'v1' }] })];
+    expect(aggregateVideoSales(orders)[0]).toMatchObject({ contentId: 'v1', orderCount: 1, unitsSold: null });
+  });
+
+  it('quantidade presente em só parte dos SKUs -> soma só as conhecidas', () => {
+    const orders = [
+      toAffiliateOrder({ id: 'o1', skus: [{ content_type: 'VIDEO', content_id: 'v1' }] }),
+      toAffiliateOrder({ id: 'o2', skus: [{ content_type: 'VIDEO', content_id: 'v1', quantity: 3 }] }),
+    ];
+    expect(aggregateVideoSales(orders)[0].unitsSold).toBe(3);
+  });
+
   it('VIDEO sem content_id (ausente/inválido) nunca entra na agregação — nunca inventa um ID', () => {
     const orders = [toAffiliateOrder({ id: 'o1', skus: [{ content_type: 'VIDEO', quantity: 1 }] })];
     expect(aggregateVideoSales(orders)).toEqual([]);

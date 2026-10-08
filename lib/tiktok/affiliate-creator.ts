@@ -168,7 +168,8 @@ export function toAffiliateOrder(item: JsonRecord): AffiliateOrderSummary {
 export interface VideoSalesAggregate {
   contentId: string;
   orderCount: number;
-  unitsSold: number;
+  /** `null` quando nenhum SKU desse vídeo informou `quantity` — nunca vira 0. */
+  unitsSold: number | null;
   /** Somado por moeda — nunca soma moedas diferentes num só número. */
   estimatedCommission: { currency: string; amount: number }[];
   actualCommission: { currency: string; amount: number }[];
@@ -182,17 +183,17 @@ export interface VideoSalesAggregate {
  * aqui, pra deixar claro o que é oficial vs. o resto).
  */
 export function aggregateVideoSales(orders: AffiliateOrderSummary[]): VideoSalesAggregate[] {
-  const byVideo = new Map<string, { orderIds: Set<string>; units: number; estimated: Map<string, number>; actual: Map<string, number> }>();
+  const byVideo = new Map<string, { orderIds: Set<string>; units: number | null; estimated: Map<string, number>; actual: Map<string, number> }>();
   for (const order of orders) {
     for (const sku of order.skus) {
       if (sku.contentType !== 'VIDEO' || !sku.contentId) continue;
       let entry = byVideo.get(sku.contentId);
       if (!entry) {
-        entry = { orderIds: new Set(), units: 0, estimated: new Map(), actual: new Map() };
+        entry = { orderIds: new Set(), units: null, estimated: new Map(), actual: new Map() };
         byVideo.set(sku.contentId, entry);
       }
       if (order.id) entry.orderIds.add(order.id);
-      if (sku.quantity !== null) entry.units += sku.quantity;
+      if (sku.quantity !== null) entry.units = (entry.units ?? 0) + sku.quantity;
       if (sku.estimatedCommission) {
         const n = Number(sku.estimatedCommission.amount);
         if (Number.isFinite(n)) entry.estimated.set(sku.estimatedCommission.currency, (entry.estimated.get(sku.estimatedCommission.currency) ?? 0) + n);

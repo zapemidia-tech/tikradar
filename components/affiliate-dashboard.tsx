@@ -62,7 +62,7 @@ interface ShowcaseProduct {
 interface VideoSalesAggregate {
   contentId: string;
   orderCount: number;
-  unitsSold: number;
+  unitsSold: number | null;
   estimatedCommission: { currency: string; amount: number }[];
   actualCommission: { currency: string; amount: number }[];
 }

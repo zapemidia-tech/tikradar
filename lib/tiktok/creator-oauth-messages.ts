@@ -30,3 +30,23 @@ export function affiliateCreatorOAuthErrorMessage(code: string | null | undefine
     ? AFFILIATE_CREATOR_OAUTH_ERROR_MESSAGES[code as AffiliateCreatorOAuthErrorCode]
     : 'Falha desconhecida ao conectar a conta de afiliado.';
 }
+
+export const AFFILIATE_CREATOR_ADMIN_PAGE = '/admin/integrations/tiktok';
+export const AFFILIATE_CREATOR_USER_PAGE = '/minha-conta-afiliado';
+
+/**
+ * Para onde o callback devolve o usuário. Admin volta para a tela de
+ * integrações (onde fica o painel e o diagnóstico); qualquer outro usuário
+ * volta para "Minha conta de afiliado" — a tela de integrações é só de
+ * admin e o deixaria sem ver o resultado da conexão.
+ */
+export function affiliateCreatorReturnPath(
+  // Qualquer papel que não seja exatamente 'admin' (inclusive null) vai para a página do usuário.
+  role: string | null | undefined,
+  outcome: { connected: true } | { error: AffiliateCreatorOAuthErrorCode },
+): string {
+  const result = 'error' in outcome ? `error=${outcome.error}` : 'connected=1';
+  return role === 'admin'
+    ? `${AFFILIATE_CREATOR_ADMIN_PAGE}?purpose=affiliate_creator&${result}`
+    : `${AFFILIATE_CREATOR_USER_PAGE}?${result}`;
+}
